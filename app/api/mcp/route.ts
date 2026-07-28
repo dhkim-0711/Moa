@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { desc, eq, like, or } from "drizzle-orm";
-import { getDb } from "../../db";
-import { sources } from "../../db/schema";
+import { getDb } from "../../../db";
+import { sources } from "../../../db/schema";
 
 type RpcRequest = { jsonrpc?: string; id?: string | number | null; method?: string; params?: { name?: string; arguments?: Record<string, unknown> } };
 
