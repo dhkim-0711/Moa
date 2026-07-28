@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 type Source = {
   id: number;
@@ -206,14 +207,19 @@ export default function Home() {
     }
     if (extension === "pdf") {
       const pdfjs = await import("pdfjs-dist");
+      pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
       const data = new Uint8Array(await file.arrayBuffer());
-      const pdf = await pdfjs.getDocument({ data, disableWorker: true }).promise;
+      const pdf = await pdfjs.getDocument({ data }).promise;
       const pages: string[] = [];
+      let extractedCharacters = 0;
       for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
         const page = await pdf.getPage(pageNo);
         const text = await page.getTextContent();
-        pages.push(`[${pageNo}페이지]\n${text.items.map((item) => "str" in item ? item.str : "").join(" ")}`);
+        const pageText = text.items.map((item) => "str" in item ? item.str : "").join(" ");
+        extractedCharacters += pageText.trim().length;
+        pages.push(`[${pageNo}페이지]\n${pageText}`);
       }
+      if (extractedCharacters === 0) throw new Error("PDF_TEXT_EMPTY");
       return pages.join("\n\n");
     }
     return "";
@@ -233,15 +239,33 @@ export default function Home() {
     for (const file of [...files]) {
       const form = new FormData();
       form.append("file", file);
+      let extracted = "";
       try {
-        const extracted = await extractFileText(file);
-        form.append("content", extracted);
+        extracted = await extractFileText(file);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        const reason = /password/i.test(message)
+          ? "암호가 설정된 PDF라 내용을 읽을 수 없습니다."
+          : message === "PDF_TEXT_EMPTY"
+            ? "글자 레이어가 없는 스캔 PDF입니다. OCR 기능이 필요합니다."
+            : /invalid|format|corrupt/i.test(message)
+              ? "PDF 형식이 올바르지 않거나 파일이 손상되었습니다."
+              : `내용 추출에 실패했습니다${message ? `: ${message}` : "."}`;
+        setSources((items) => items.map((item) => item.title === file.name ? { ...item, excerpt: reason } : item));
+        continue;
+      }
+      form.append("content", extracted);
+      try {
         const response = await fetch("/api/upload", { method: "POST", body: form });
-        if (!response.ok) throw new Error();
+        if (!response.ok) {
+          const detail = await response.json().catch(() => ({})) as { error?: string };
+          throw new Error(detail.error || `서버 응답 ${response.status}`);
+        }
         const data = await response.json();
         setSources((items) => items.map((item) => item.title === file.name && item.id > 0 ? { ...data.source, excerpt: extracted ? extracted.slice(0, 100) : "텍스트 추출이 지원되지 않는 파일입니다." } : item));
-      } catch {
-        setSources((items) => items.map((item) => item.title === file.name ? { ...item, excerpt: "내용 추출 또는 업로드에 실패했습니다." } : item));
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "";
+        setSources((items) => items.map((item) => item.title === file.name ? { ...item, excerpt: `파일 저장에 실패했습니다${detail ? `: ${detail}` : "."}` } : item));
       }
     }
   }
