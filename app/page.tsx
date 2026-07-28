@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 type Source = {
   id: number;
@@ -23,6 +23,42 @@ const DOCUMENT_KINDS = [
   "PPTX", "ODT", "RTF", "TXT", "MD", "CSV", "JSON", "HTML", "HTM", "XML", "FILE",
 ];
 
+function matchingSnippets(source: Source, query: string) {
+  const text = source.content || source.excerpt || source.title;
+  const needle = query.trim().toLocaleLowerCase("ko");
+  if (!needle) return [];
+  const normalized = text.toLocaleLowerCase("ko");
+  const snippets: string[] = [];
+  let cursor = 0;
+  while (snippets.length < 6) {
+    const index = normalized.indexOf(needle, cursor);
+    if (index < 0) break;
+    const start = Math.max(0, index - 110);
+    const end = Math.min(text.length, index + needle.length + 150);
+    snippets.push(`${start > 0 ? "…" : ""}${text.slice(start, end).replace(/\s+/g, " ").trim()}${end < text.length ? "…" : ""}`);
+    cursor = index + needle.length;
+  }
+  return snippets.length ? snippets : [source.excerpt || source.title];
+}
+
+function highlighted(text: string, query: string): ReactNode[] {
+  const needle = query.trim();
+  if (!needle) return [text];
+  const result: ReactNode[] = [];
+  const normalized = text.toLocaleLowerCase("ko");
+  const target = needle.toLocaleLowerCase("ko");
+  let cursor = 0;
+  let index = normalized.indexOf(target);
+  while (index >= 0) {
+    result.push(text.slice(cursor, index));
+    result.push(<mark key={`${index}-${cursor}`}>{text.slice(index, index + needle.length)}</mark>);
+    cursor = index + needle.length;
+    index = normalized.indexOf(target, cursor);
+  }
+  result.push(text.slice(cursor));
+  return result;
+}
+
 export default function Home() {
   const [authState, setAuthState] = useState<"checking" | "locked" | "ready">("checking");
   const [accessCode, setAccessCode] = useState("");
@@ -30,6 +66,7 @@ export default function Home() {
   const [showAll, setShowAll] = useState(false);
   const [filterKind, setFilterKind] = useState<"ALL" | "DOCUMENT" | "WEB" | "MEMO">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchPreview, setSearchPreview] = useState<Source | null>(null);
   const [sources, setSources] = useState<Source[]>(seedSources);
   const [modal, setModal] = useState<"link" | "memo" | "file" | "help" | null>(null);
   const [title, setTitle] = useState("");
@@ -280,7 +317,7 @@ export default function Home() {
           <div className="library-search"><span>⌕</span><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="제목, 메모, 문서 본문에서 검색" aria-label="자료 검색" />{searchQuery && <button onClick={() => setSearchQuery("")} aria-label="검색어 지우기">×</button>}</div>
           <div className="section-title"><div><h3>{searchQuery ? "검색 결과" : filterKind !== "ALL" ? `${filterKind === "DOCUMENT" ? "문서" : filterKind === "WEB" ? "웹페이지" : "메모"} 자료` : showAll ? "전체 자료" : "최근 자료"}</h3><span>{visibleSources.length}개의 자료</span></div><button onClick={() => { if (searchQuery) setSearchQuery(""); else if (filterKind !== "ALL") setFilterKind("ALL"); else setShowAll((value) => !value); }}>{searchQuery ? "검색 지우기" : filterKind !== "ALL" ? "필터 해제" : showAll ? "최근 자료만 보기" : "전체 보기 →"}</button></div>
           <section className="source-grid">
-            {(searchQuery || showAll || filterKind !== "ALL" ? visibleSources : visibleSources.slice(0, 6)).map((source) => <article className={source.id > 0 ? "openable" : ""} key={source.id} onClick={() => source.id > 0 && window.open(`/source/${source.id}`, "_blank", "noopener,noreferrer")}><div className={`file-icon ${source.kind.toLowerCase()}`}>{source.kind === "WEB" ? "⌁" : source.kind === "MEMO" ? "✎" : "▤"}</div><span className="kind">{source.kind}</span><h4>{source.title}</h4><p>{source.excerpt}</p><footer><span>{source.createdAt}</span><button className="delete-source" onClick={(event) => { event.stopPropagation(); deleteSource(source); }} aria-label={`${source.title} 삭제`}>삭제</button></footer></article>)}
+            {(searchQuery || showAll || filterKind !== "ALL" ? visibleSources : visibleSources.slice(0, 6)).map((source) => <article className={source.id > 0 ? "openable" : ""} key={source.id} onClick={() => { if (searchQuery.trim()) setSearchPreview(source); else if (source.id > 0) window.open(`/source/${source.id}`, "_blank", "noopener,noreferrer"); }}><div className={`file-icon ${source.kind.toLowerCase()}`}>{source.kind === "WEB" ? "⌁" : source.kind === "MEMO" ? "✎" : "▤"}</div><span className="kind">{source.kind}</span><h4>{source.title}</h4><p>{source.excerpt}</p><footer><span>{source.createdAt}</span><button className="delete-source" onClick={(event) => { event.stopPropagation(); deleteSource(source); }} aria-label={`${source.title} 삭제`}>삭제</button></footer></article>)}
             {visibleSources.length === 0 && <div className="empty-search"><span>⌕</span><strong>일치하는 자료가 없습니다.</strong><small>다른 검색어나 자료 유형을 사용해보세요.</small></div>}
           </section>
         </>
@@ -292,6 +329,18 @@ export default function Home() {
         modal === "file" ? <><h2>파일 올리기</h2><p>PDF, DOCX, XLSX·XLS, PPTX, HWPX 등 여러 파일을 한 번에 추가할 수 있어요.</p><div className="dropzone" onClick={() => fileRef.current?.click()}><span>↑</span><strong>파일을 선택하거나 여기로 끌어오세요</strong><small>지원 형식은 본문·시트·슬라이드의 글자를 추출해 검색할 수 있습니다.</small></div><input ref={fileRef} type="file" multiple hidden onChange={(e) => handleFiles(e.target.files)} /></> :
         <form onSubmit={saveSource}><h2>{modal === "link" ? "웹페이지 저장" : "메모 남기기"}</h2><p>{modal === "link" ? "링크의 내용을 읽고 검색 가능한 자료로 정리합니다." : "아이디어와 관찰을 바로 지식으로 남겨보세요."}</p><label>제목<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="자료의 제목" /></label><label>{modal === "link" ? "웹 주소" : "내용"}{modal === "link" ? <input required value={content} onChange={(e) => setContent(e.target.value)} placeholder="https://..." /> : <textarea required value={content} onChange={(e) => setContent(e.target.value)} placeholder="생각을 자유롭게 적어주세요" />}</label><button className="save" type="submit">저장하기</button></form>}
       </div></div>}
+      {searchPreview && <div className="modal-backdrop" onMouseDown={() => setSearchPreview(null)}>
+        <div className="modal search-preview" role="dialog" aria-modal="true" aria-label="검색 내용 미리보기" onMouseDown={(event) => event.stopPropagation()}>
+          <button className="close" onClick={() => setSearchPreview(null)}>×</button>
+          <span className="search-preview-kind">{searchPreview.kind}</span>
+          <h2>{searchPreview.title}</h2>
+          <p>‘{searchQuery}’와 관련된 내용만 표시합니다.</p>
+          <div className="match-list">
+            {matchingSnippets(searchPreview, searchQuery).map((snippet, index) => <div className="match-snippet" key={index}>{highlighted(snippet, searchQuery)}</div>)}
+          </div>
+          {searchPreview.id > 0 && <button className="open-original" onClick={() => window.open(`/source/${searchPreview.id}`, "_blank", "noopener,noreferrer")}>원문 전체 보기</button>}
+        </div>
+      </div>}
     </main>
   );
 }
