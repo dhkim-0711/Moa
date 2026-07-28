@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { sources } from "../../../../db/schema";
 import { requireAuthorized } from "../../../../lib/auth";
+import { env } from "cloudflare:workers";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const denied = await requireAuthorized(request);
@@ -15,6 +16,8 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   const denied = await requireAuthorized(request);
   if (denied) return denied;
   const { id } = await context.params;
+  const [source] = await getDb().select().from(sources).where(eq(sources.id, Number(id))).limit(1);
+  if (source?.objectKey) await env.FILES.delete(source.objectKey);
   await getDb().delete(sources).where(eq(sources.id, Number(id)));
   return Response.json({ ok: true });
 }

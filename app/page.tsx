@@ -21,6 +21,7 @@ export default function Home() {
   const [authState, setAuthState] = useState<"checking" | "locked" | "ready">("checking");
   const [accessCode, setAccessCode] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [showAll, setShowAll] = useState(false);
   const [sources, setSources] = useState<Source[]>(seedSources);
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
@@ -151,6 +152,20 @@ export default function Home() {
     setAnswer(`“${query}” 질문은 ChatGPT에서 모아 앱을 활성화한 뒤 그대로 물어보세요. ChatGPT가 저장된 자료를 검색하고 원문을 확인해 출처와 함께 답합니다.`);
   }
 
+  async function deleteSource(source: Source) {
+    if (source.id < 0) {
+      setSources((items) => items.filter((item) => item.id !== source.id));
+      return;
+    }
+    if (!window.confirm(`“${source.title}” 자료를 삭제할까요?\n삭제한 자료는 복구할 수 없습니다.`)) return;
+    const response = await fetch(`/api/source/${source.id}`, { method: "DELETE" });
+    if (!response.ok) {
+      window.alert("자료를 삭제하지 못했습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+    setSources((items) => items.filter((item) => item.id !== source.id));
+  }
+
   if (authState !== "ready") {
     return <main className="lock-screen">
       <section className="lock-card">
@@ -198,9 +213,9 @@ export default function Home() {
             <button onClick={() => setModal("link")}><i className="mint">⌁</i><span><strong>웹페이지 저장</strong><small>링크를 붙여넣어 저장</small></span><b>›</b></button>
             <button onClick={() => setModal("memo")}><i className="violet">✎</i><span><strong>메모 남기기</strong><small>떠오른 생각을 바로 기록</small></span><b>›</b></button>
           </section>
-          <div className="section-title"><div><h3>최근 자료</h3><span>{sources.length}개의 자료</span></div><button>전체 보기 →</button></div>
+          <div className="section-title"><div><h3>{showAll ? "전체 자료" : "최근 자료"}</h3><span>{sources.length}개의 자료</span></div><button onClick={() => setShowAll((value) => !value)}>{showAll ? "최근 자료만 보기" : "전체 보기 →"}</button></div>
           <section className="source-grid">
-            {sources.slice(0, 6).map((source) => <article key={source.id}><div className={`file-icon ${source.kind.toLowerCase()}`}>{source.kind === "WEB" ? "⌁" : source.kind === "MEMO" ? "✎" : "▤"}</div><span className="kind">{source.kind}</span><h4>{source.title}</h4><p>{source.excerpt}</p><footer><span>{source.createdAt}</span><button>•••</button></footer></article>)}
+            {(showAll ? sources : sources.slice(0, 6)).map((source) => <article key={source.id}><div className={`file-icon ${source.kind.toLowerCase()}`}>{source.kind === "WEB" ? "⌁" : source.kind === "MEMO" ? "✎" : "▤"}</div><span className="kind">{source.kind}</span><h4>{source.title}</h4><p>{source.excerpt}</p><footer><span>{source.createdAt}</span><button className="delete-source" onClick={() => deleteSource(source)} aria-label={`${source.title} 삭제`}>삭제</button></footer></article>)}
           </section>
         </>}
 
