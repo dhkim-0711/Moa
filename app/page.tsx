@@ -276,6 +276,15 @@ export default function Home() {
     setAccessCode("");
   }
 
+  function openLibraryHome() {
+    setSearchQuery("");
+    setFilterKind("ALL");
+    setShowAll(true);
+    setSearchPreview(null);
+    setModal(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   async function deleteSource(source: Source) {
     if (source.id < 0) {
       setSources((items) => items.filter((item) => item.id !== source.id));
@@ -313,7 +322,7 @@ export default function Home() {
         <div className="brand"><span className="brand-mark">M</span><span>모아</span></div>
         <button className="new-button" onClick={() => setModal("file")}><span>＋</span> 새 자료 추가</button>
         <nav>
-          <button className="active"><span>▦</span> 자료함 <b>{counts.all}</b></button>
+          <button className="active" onClick={openLibraryHome}><span>▦</span> 자료함 <b>{counts.all}</b></button>
           <button onClick={() => setModal("help")}><span>⌁</span> ChatGPT 연결 방법</button>
         </nav>
         <div className="side-label">자료 유형</div>
