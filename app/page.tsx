@@ -8,6 +8,7 @@ type Source = {
   kind: string;
   url?: string | null;
   excerpt?: string | null;
+  content?: string | null;
   createdAt: string;
 };
 
@@ -23,6 +24,7 @@ export default function Home() {
   const [loginError, setLoginError] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [filterKind, setFilterKind] = useState<"ALL" | "DOCUMENT" | "WEB" | "MEMO">("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
   const [sources, setSources] = useState<Source[]>(seedSources);
   const [modal, setModal] = useState<"link" | "memo" | "file" | "help" | null>(null);
   const [title, setTitle] = useState("");
@@ -65,11 +67,19 @@ export default function Home() {
     web: sources.filter((s) => s.kind === "WEB").length,
     memo: sources.filter((s) => s.kind === "MEMO").length,
   }), [sources]);
-  const visibleSources = useMemo(() => sources.filter((source) => {
-    if (filterKind === "ALL") return true;
-    if (filterKind === "DOCUMENT") return ["PDF", "HWPX", "FILE", "TXT", "MD", "CSV"].includes(source.kind);
-    return source.kind === filterKind;
-  }), [sources, filterKind]);
+  const visibleSources = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase("ko");
+    return sources.filter((source) => {
+      const matchesKind = filterKind === "ALL"
+        || (filterKind === "DOCUMENT" && ["PDF", "HWPX", "FILE", "TXT", "MD", "CSV"].includes(source.kind))
+        || source.kind === filterKind;
+      if (!matchesKind) return false;
+      if (!normalizedQuery) return true;
+      return [source.title, source.excerpt, source.content, source.kind]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase("ko").includes(normalizedQuery));
+    });
+  }, [sources, filterKind, searchQuery]);
 
   async function saveSource(event: FormEvent) {
     event.preventDefault();
@@ -217,9 +227,11 @@ export default function Home() {
             <button onClick={() => setModal("link")}><i className="mint">⌁</i><span><strong>웹페이지 저장</strong><small>링크를 붙여넣어 저장</small></span><b>›</b></button>
             <button onClick={() => setModal("memo")}><i className="violet">✎</i><span><strong>메모 남기기</strong><small>떠오른 생각을 바로 기록</small></span><b>›</b></button>
           </section>
-          <div className="section-title"><div><h3>{filterKind !== "ALL" ? `${filterKind === "DOCUMENT" ? "문서" : filterKind === "WEB" ? "웹페이지" : "메모"} 자료` : showAll ? "전체 자료" : "최근 자료"}</h3><span>{visibleSources.length}개의 자료</span></div><button onClick={() => { if (filterKind !== "ALL") setFilterKind("ALL"); else setShowAll((value) => !value); }}>{filterKind !== "ALL" ? "필터 해제" : showAll ? "최근 자료만 보기" : "전체 보기 →"}</button></div>
+          <div className="library-search"><span>⌕</span><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="제목, 메모, 문서 본문에서 검색" aria-label="자료 검색" />{searchQuery && <button onClick={() => setSearchQuery("")} aria-label="검색어 지우기">×</button>}</div>
+          <div className="section-title"><div><h3>{searchQuery ? "검색 결과" : filterKind !== "ALL" ? `${filterKind === "DOCUMENT" ? "문서" : filterKind === "WEB" ? "웹페이지" : "메모"} 자료` : showAll ? "전체 자료" : "최근 자료"}</h3><span>{visibleSources.length}개의 자료</span></div><button onClick={() => { if (searchQuery) setSearchQuery(""); else if (filterKind !== "ALL") setFilterKind("ALL"); else setShowAll((value) => !value); }}>{searchQuery ? "검색 지우기" : filterKind !== "ALL" ? "필터 해제" : showAll ? "최근 자료만 보기" : "전체 보기 →"}</button></div>
           <section className="source-grid">
-            {(showAll || filterKind !== "ALL" ? visibleSources : visibleSources.slice(0, 6)).map((source) => <article className={source.id > 0 ? "openable" : ""} key={source.id} onClick={() => source.id > 0 && window.open(`/source/${source.id}`, "_blank", "noopener,noreferrer")}><div className={`file-icon ${source.kind.toLowerCase()}`}>{source.kind === "WEB" ? "⌁" : source.kind === "MEMO" ? "✎" : "▤"}</div><span className="kind">{source.kind}</span><h4>{source.title}</h4><p>{source.excerpt}</p><footer><span>{source.createdAt}</span><button className="delete-source" onClick={(event) => { event.stopPropagation(); deleteSource(source); }} aria-label={`${source.title} 삭제`}>삭제</button></footer></article>)}
+            {(searchQuery || showAll || filterKind !== "ALL" ? visibleSources : visibleSources.slice(0, 6)).map((source) => <article className={source.id > 0 ? "openable" : ""} key={source.id} onClick={() => source.id > 0 && window.open(`/source/${source.id}`, "_blank", "noopener,noreferrer")}><div className={`file-icon ${source.kind.toLowerCase()}`}>{source.kind === "WEB" ? "⌁" : source.kind === "MEMO" ? "✎" : "▤"}</div><span className="kind">{source.kind}</span><h4>{source.title}</h4><p>{source.excerpt}</p><footer><span>{source.createdAt}</span><button className="delete-source" onClick={(event) => { event.stopPropagation(); deleteSource(source); }} aria-label={`${source.title} 삭제`}>삭제</button></footer></article>)}
+            {visibleSources.length === 0 && <div className="empty-search"><span>⌕</span><strong>일치하는 자료가 없습니다.</strong><small>다른 검색어나 자료 유형을 사용해보세요.</small></div>}
           </section>
         </>
       </section>
