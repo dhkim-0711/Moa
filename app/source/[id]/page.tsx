@@ -1,8 +1,14 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { sources } from "../../../db/schema";
+import { cookies } from "next/headers";
+import { isSessionValueAuthorized } from "../../../lib/auth";
 
 export default async function SourcePage({ params }: { params: Promise<{ id: string }> }) {
+  const cookieStore = await cookies();
+  if (!await isSessionValueAuthorized(cookieStore.get("moa_session")?.value)) {
+    return <main style={{ padding: 40 }}>모아에서 로그인한 뒤 자료를 열어주세요.</main>;
+  }
   const { id } = await params;
   const [source] = await getDb().select().from(sources).where(eq(sources.id, Number(id))).limit(1);
   if (!source) return <main style={{ padding: 40 }}>자료를 찾을 수 없습니다.</main>;

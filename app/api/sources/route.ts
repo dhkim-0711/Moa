@@ -1,8 +1,11 @@
 import { desc } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { sources } from "../../../db/schema";
+import { requireAuthorized } from "../../../lib/auth";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = await requireAuthorized(request);
+  if (denied) return denied;
   try {
     const rows = await getDb().select().from(sources).orderBy(desc(sources.id)).limit(100);
     return Response.json({ sources: rows });
@@ -12,6 +15,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await requireAuthorized(request);
+  if (denied) return denied;
   const payload = await request.json() as { title?: string; kind?: string; url?: string | null; excerpt?: string | null; content?: string | null };
   if (!payload.title?.trim()) return Response.json({ error: "제목이 필요합니다." }, { status: 400 });
   try {

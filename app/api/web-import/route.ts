@@ -1,5 +1,6 @@
 import { getDb } from "../../../db";
 import { sources } from "../../../db/schema";
+import { requireAuthorized } from "../../../lib/auth";
 
 function readableText(html: string) {
   return html
@@ -15,6 +16,8 @@ function readableText(html: string) {
 }
 
 export async function POST(request: Request) {
+  const denied = await requireAuthorized(request);
+  if (denied) return denied;
   const { url, title } = await request.json() as { url?: string; title?: string };
   if (!url || !/^https?:\/\//i.test(url)) {
     return Response.json({ error: "올바른 웹 주소가 필요합니다." }, { status: 400 });

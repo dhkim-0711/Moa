@@ -7,6 +7,8 @@ interface Env {
   DB: D1Database;
   FILES: R2Bucket;
   MOA_MCP_TOKEN: string;
+  MOA_ACCESS_CODE: string;
+  MOA_SESSION_SECRET: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {

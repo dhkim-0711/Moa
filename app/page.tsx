@@ -18,6 +18,9 @@ const seedSources: Source[] = [
 ];
 
 export default function Home() {
+  const [authState, setAuthState] = useState<"checking" | "locked" | "ready">("checking");
+  const [accessCode, setAccessCode] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [sources, setSources] = useState<Source[]>(seedSources);
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
@@ -28,11 +31,34 @@ export default function Home() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch("/api/sources")
-      .then((r) => r.ok ? r.json() : Promise.reject())
-      .then((data) => data.sources?.length && setSources(data.sources))
-      .catch(() => {});
+    fetch("/api/session")
+      .then((response) => response.json())
+      .then((session) => {
+        if (!session.authenticated) return setAuthState("locked");
+        setAuthState("ready");
+        return fetch("/api/sources")
+          .then((r) => r.ok ? r.json() : Promise.reject())
+          .then((data) => data.sources?.length ? setSources(data.sources) : setSources([]));
+      })
+      .catch(() => setAuthState("locked"));
   }, []);
+
+  async function unlock(event: FormEvent) {
+    event.preventDefault();
+    setLoginError("");
+    const response = await fetch("/api/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: accessCode }),
+    });
+    if (!response.ok) {
+      setLoginError("비밀번호가 올바르지 않습니다.");
+      return;
+    }
+    setAuthState("ready");
+    const data = await fetch("/api/sources").then((result) => result.json());
+    setSources(data.sources || []);
+  }
 
   const counts = useMemo(() => ({
     all: sources.length,
@@ -123,6 +149,23 @@ export default function Home() {
     if (!query.trim()) return;
     setActive("chat");
     setAnswer(`“${query}” 질문은 ChatGPT에서 모아 앱을 활성화한 뒤 그대로 물어보세요. ChatGPT가 저장된 자료를 검색하고 원문을 확인해 출처와 함께 답합니다.`);
+  }
+
+  if (authState !== "ready") {
+    return <main className="lock-screen">
+      <section className="lock-card">
+        <div className="brand lock-brand"><span className="brand-mark">M</span><span>모아</span></div>
+        {authState === "checking" ? <><div className="lock-spinner" /><p>개인 공간을 확인하고 있어요.</p></> :
+          <form onSubmit={unlock}>
+            <span className="eyebrow">PRIVATE KNOWLEDGE SPACE</span>
+            <h1>나의 지식 작업실</h1>
+            <p>저장한 자료를 보호하기 위해 개인 비밀번호가 필요합니다.</p>
+            <label>비밀번호<input type="password" autoFocus value={accessCode} onChange={(event) => setAccessCode(event.target.value)} placeholder="모아 비밀번호" /></label>
+            {loginError && <small className="login-error">{loginError}</small>}
+            <button type="submit">개인 공간 열기</button>
+          </form>}
+      </section>
+    </main>;
   }
 
   return (
