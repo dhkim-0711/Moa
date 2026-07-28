@@ -18,6 +18,11 @@ const seedSources: Source[] = [
   { id: -3, title: "아이디어 메모 — 온보딩", kind: "MEMO", excerpt: "첫 5분 안에 가치 경험 제공", createdAt: "7월 25일" },
 ];
 
+const DOCUMENT_KINDS = [
+  "PDF", "DOCX", "HWPX", "XLSX", "XLS", "XLSM", "ODS",
+  "PPTX", "ODT", "RTF", "TXT", "MD", "CSV", "JSON", "HTML", "HTM", "XML", "FILE",
+];
+
 export default function Home() {
   const [authState, setAuthState] = useState<"checking" | "locked" | "ready">("checking");
   const [accessCode, setAccessCode] = useState("");
@@ -63,7 +68,7 @@ export default function Home() {
 
   const counts = useMemo(() => ({
     all: sources.length,
-    documents: sources.filter((s) => ["PDF", "DOCX", "HWPX", "FILE", "TXT", "MD", "CSV"].includes(s.kind)).length,
+    documents: sources.filter((s) => DOCUMENT_KINDS.includes(s.kind)).length,
     web: sources.filter((s) => s.kind === "WEB").length,
     memo: sources.filter((s) => s.kind === "MEMO").length,
   }), [sources]);
@@ -71,7 +76,7 @@ export default function Home() {
     const normalizedQuery = searchQuery.trim().toLocaleLowerCase("ko");
     return sources.filter((source) => {
       const matchesKind = filterKind === "ALL"
-        || (filterKind === "DOCUMENT" && ["PDF", "DOCX", "HWPX", "FILE", "TXT", "MD", "CSV"].includes(source.kind))
+        || (filterKind === "DOCUMENT" && DOCUMENT_KINDS.includes(source.kind))
         || source.kind === filterKind;
       if (!matchesKind) return false;
       if (!normalizedQuery) return true;
@@ -109,11 +114,51 @@ export default function Home() {
 
   async function extractFileText(file: File) {
     const extension = file.name.split(".").pop()?.toLowerCase();
-    if (extension === "txt" || extension === "md" || extension === "csv") return file.text();
+    if (["txt", "md", "csv", "json"].includes(extension || "")) return file.text();
+    if (["html", "htm", "xml"].includes(extension || "")) {
+      const raw = await file.text();
+      return new DOMParser().parseFromString(raw, extension === "xml" ? "text/xml" : "text/html").documentElement.textContent || "";
+    }
+    if (extension === "rtf") {
+      return (await file.text())
+        .replace(/\\par[d]?/g, "\n")
+        .replace(/\\'[0-9a-fA-F]{2}/g, " ")
+        .replace(/\\[a-zA-Z]+-?\d* ?/g, "")
+        .replace(/[{}]/g, "")
+        .trim();
+    }
     if (extension === "docx") {
       const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
       return result.value;
+    }
+    if (["xlsx", "xls", "xlsm", "ods"].includes(extension || "")) {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      return workbook.SheetNames.map((sheetName) => {
+        const rows = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName], { blankrows: false });
+        return `[시트: ${sheetName}]\n${rows}`;
+      }).join("\n\n");
+    }
+    if (extension === "pptx") {
+      const JSZip = (await import("jszip")).default;
+      const zip = await JSZip.loadAsync(file);
+      const slideNames = Object.keys(zip.files)
+        .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+        .sort((a, b) => Number(a.match(/\d+/)?.[0]) - Number(b.match(/\d+/)?.[0]));
+      const slides = await Promise.all(slideNames.map(async (name, index) => {
+        const xml = await zip.file(name)?.async("text") || "";
+        const document = new DOMParser().parseFromString(xml, "text/xml");
+        const text = [...document.getElementsByTagNameNS("*", "t")].map((node) => node.textContent || "").join(" ");
+        return `[슬라이드 ${index + 1}]\n${text}`;
+      }));
+      return slides.join("\n\n");
+    }
+    if (extension === "odt") {
+      const JSZip = (await import("jszip")).default;
+      const zip = await JSZip.loadAsync(file);
+      const xml = await zip.file("content.xml")?.async("text") || "";
+      return new DOMParser().parseFromString(xml, "text/xml").documentElement.textContent || "";
     }
     if (extension === "hwpx") {
       const JSZip = (await import("jszip")).default;
@@ -220,15 +265,15 @@ export default function Home() {
       </aside>
 
       <section className="workspace">
-        <header><div><h1>내 자료함</h1><p>ChatGPT가 활용할 PDF, DOCX, HWPX, 웹페이지와 메모를 저장하고 관리하세요.</p></div><button className="help" onClick={() => setModal("help")} aria-label="사용 방법">?</button></header>
+        <header><div><h1>내 자료함</h1><p>ChatGPT가 활용할 PDF, 워드, 엑셀, PPT, HWPX와 메모를 저장하고 관리하세요.</p></div><button className="help" onClick={() => setModal("help")} aria-label="사용 방법">?</button></header>
 
         <>
           <section className="hero-card">
-            <div><span className="eyebrow">PERSONAL KNOWLEDGE BASE</span><h2>생각의 재료를<br/><em>한곳에 모으세요.</em></h2><p>PDF, DOCX, HWPX, 웹페이지, 메모까지. 모아가 읽고 연결해<br/>당신의 다음 기획과 보고서를 돕습니다.</p></div>
-            <div className="orb"><span>PDF</span><span>DOCX</span><span>URL</span><span>MEMO</span><i>✦</i></div>
+            <div><span className="eyebrow">PERSONAL KNOWLEDGE BASE</span><h2>생각의 재료를<br/><em>한곳에 모으세요.</em></h2><p>PDF, 워드, 엑셀, PPT, HWPX까지. 모아가 읽고 연결해<br/>당신의 다음 기획과 보고서를 돕습니다.</p></div>
+            <div className="orb"><span>PDF</span><span>WORD</span><span>EXCEL</span><span>PPT</span><i>✦</i></div>
           </section>
           <section className="quick-add">
-            <button onClick={() => setModal("file")}><i className="coral">↑</i><span><strong>파일 올리기</strong><small>PDF, DOCX, HWPX 및 문서</small></span><b>›</b></button>
+            <button onClick={() => setModal("file")}><i className="coral">↑</i><span><strong>파일 올리기</strong><small>PDF, 워드, 엑셀, PPT, HWPX</small></span><b>›</b></button>
             <button onClick={() => setModal("link")}><i className="mint">⌁</i><span><strong>웹페이지 저장</strong><small>링크를 붙여넣어 저장</small></span><b>›</b></button>
             <button onClick={() => setModal("memo")}><i className="violet">✎</i><span><strong>메모 남기기</strong><small>떠오른 생각을 바로 기록</small></span><b>›</b></button>
           </section>
@@ -244,7 +289,7 @@ export default function Home() {
       {modal && <div className="modal-backdrop" onMouseDown={() => setModal(null)}><div className="modal" onMouseDown={(e) => e.stopPropagation()}>
         <button className="close" onClick={() => setModal(null)}>×</button>
         {modal === "help" ? <><h2>모아 사용 방법</h2><p>모아는 자료를 보관하고 ChatGPT에 제공하는 개인 자료함입니다. 질문과 문서 작성은 ChatGPT에서 진행하세요.</p><div className="help-steps"><span><b>1</b> 파일·링크·메모를 자료함에 저장</span><span><b>2</b> 자료 카드를 눌러 추출된 원문 확인</span><span><b>3</b> ChatGPT에서 모아 앱을 활성화</span><span><b>4</b> “모아 자료를 근거로 답해줘”라고 질문</span></div></> :
-        modal === "file" ? <><h2>파일 올리기</h2><p>PDF, DOCX, HWPX 등 여러 파일을 한 번에 추가할 수 있어요.</p><div className="dropzone" onClick={() => fileRef.current?.click()}><span>↑</span><strong>파일을 선택하거나 여기로 끌어오세요</strong><small>파일은 개인 공간에 안전하게 보관됩니다.</small></div><input ref={fileRef} type="file" multiple hidden onChange={(e) => handleFiles(e.target.files)} /></> :
+        modal === "file" ? <><h2>파일 올리기</h2><p>PDF, DOCX, XLSX·XLS, PPTX, HWPX 등 여러 파일을 한 번에 추가할 수 있어요.</p><div className="dropzone" onClick={() => fileRef.current?.click()}><span>↑</span><strong>파일을 선택하거나 여기로 끌어오세요</strong><small>지원 형식은 본문·시트·슬라이드의 글자를 추출해 검색할 수 있습니다.</small></div><input ref={fileRef} type="file" multiple hidden onChange={(e) => handleFiles(e.target.files)} /></> :
         <form onSubmit={saveSource}><h2>{modal === "link" ? "웹페이지 저장" : "메모 남기기"}</h2><p>{modal === "link" ? "링크의 내용을 읽고 검색 가능한 자료로 정리합니다." : "아이디어와 관찰을 바로 지식으로 남겨보세요."}</p><label>제목<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="자료의 제목" /></label><label>{modal === "link" ? "웹 주소" : "내용"}{modal === "link" ? <input required value={content} onChange={(e) => setContent(e.target.value)} placeholder="https://..." /> : <textarea required value={content} onChange={(e) => setContent(e.target.value)} placeholder="생각을 자유롭게 적어주세요" />}</label><button className="save" type="submit">저장하기</button></form>}
       </div></div>}
     </main>
