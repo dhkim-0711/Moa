@@ -7,5 +7,7 @@ export const sources = sqliteTable("sources", {
   url: text("url"),
   objectKey: text("object_key"),
   excerpt: text("excerpt"),
+  content: text("content"),
+  status: text("status").notNull().default("ready"),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 });

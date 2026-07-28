@@ -12,7 +12,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const payload = await request.json() as { title?: string; kind?: string; url?: string | null; excerpt?: string | null };
+  const payload = await request.json() as { title?: string; kind?: string; url?: string | null; excerpt?: string | null; content?: string | null };
   if (!payload.title?.trim()) return Response.json({ error: "제목이 필요합니다." }, { status: 400 });
   try {
     const [source] = await getDb().insert(sources).values({
@@ -20,6 +20,7 @@ export async function POST(request: Request) {
       kind: payload.kind || "MEMO",
       url: payload.url,
       excerpt: payload.excerpt,
+      content: payload.content || payload.excerpt,
     }).returning();
     return Response.json({ source }, { status: 201 });
   } catch {

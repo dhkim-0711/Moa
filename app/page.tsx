@@ -43,6 +43,20 @@ export default function Home() {
 
   async function saveSource(event: FormEvent) {
     event.preventDefault();
+    if (modal === "link") {
+      const optimistic: Source = { id: Date.now(), title: title || content, kind: "WEB", url: content, excerpt: "웹페이지 내용을 가져오는 중…", createdAt: "방금 전" };
+      setSources((items) => [optimistic, ...items]);
+      setModal(null); setTitle(""); setContent("");
+      try {
+        const response = await fetch("/api/web-import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title, url: content }) });
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        setSources((items) => items.map((item) => item.id === optimistic.id ? data.source : item));
+      } catch {
+        setSources((items) => items.map((item) => item.id === optimistic.id ? { ...item, excerpt: "가져오기 실패 — 해당 사이트가 자동 수집을 막고 있을 수 있어요." } : item));
+      }
+      return;
+    }
     const payload = { title: title || (modal === "link" ? content : "새 자료"), kind: modal === "link" ? "WEB" : "MEMO", url: modal === "link" ? content : null, excerpt: modal === "memo" ? content : "웹페이지 분석 대기 중" };
     const optimistic: Source = { id: Date.now(), ...payload, createdAt: "방금 전" };
     setSources((items) => [optimistic, ...items]);
@@ -53,7 +67,32 @@ export default function Home() {
       .catch(() => {});
   }
 
-  function handleFiles(files: FileList | null) {
+  async function extractFileText(file: File) {
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    if (extension === "txt" || extension === "md" || extension === "csv") return file.text();
+    if (extension === "hwpx") {
+      const JSZip = (await import("jszip")).default;
+      const zip = await JSZip.loadAsync(file);
+      const sectionNames = Object.keys(zip.files).filter((name) => /^Contents\/section\d+\.xml$/i.test(name)).sort();
+      const sections = await Promise.all(sectionNames.map((name) => zip.file(name)?.async("text") || ""));
+      return sections.map((xml) => new DOMParser().parseFromString(xml, "text/xml").documentElement.textContent || "").join("\n\n");
+    }
+    if (extension === "pdf") {
+      const pdfjs = await import("pdfjs-dist");
+      const data = new Uint8Array(await file.arrayBuffer());
+      const pdf = await pdfjs.getDocument({ data, disableWorker: true }).promise;
+      const pages: string[] = [];
+      for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
+        const page = await pdf.getPage(pageNo);
+        const text = await page.getTextContent();
+        pages.push(`[${pageNo}페이지]\n${text.items.map((item) => "str" in item ? item.str : "").join(" ")}`);
+      }
+      return pages.join("\n\n");
+    }
+    return "";
+  }
+
+  async function handleFiles(files: FileList | null) {
     if (!files?.length) return;
     const added = [...files].map((file, index) => ({
       id: Date.now() + index,
@@ -64,17 +103,26 @@ export default function Home() {
     }));
     setSources((items) => [...added, ...items]);
     setModal(null);
-    [...files].forEach((file) => {
+    for (const file of [...files]) {
       const form = new FormData();
       form.append("file", file);
-      fetch("/api/upload", { method: "POST", body: form }).catch(() => {});
-    });
+      try {
+        const extracted = await extractFileText(file);
+        form.append("content", extracted);
+        const response = await fetch("/api/upload", { method: "POST", body: form });
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        setSources((items) => items.map((item) => item.title === file.name && item.id > 0 ? { ...data.source, excerpt: extracted ? extracted.slice(0, 100) : "텍스트 추출이 지원되지 않는 파일입니다." } : item));
+      } catch {
+        setSources((items) => items.map((item) => item.title === file.name ? { ...item, excerpt: "내용 추출 또는 업로드에 실패했습니다." } : item));
+      }
+    }
   }
 
   function ask() {
     if (!query.trim()) return;
     setActive("chat");
-    setAnswer(`자료를 종합하면, “${query}”의 핵심은 고객이 첫 사용 단계에서 명확한 가치를 경험하도록 만드는 것입니다. 기존 메모의 온보딩 원칙과 벤치마크 자료를 연결해, ① 첫 5분 내 핵심 행동 유도 ② 결과를 바로 보여주는 피드백 ③ 이후 사용 목적에 맞춘 개인화 흐름을 우선 제안합니다.`);
+    setAnswer(`“${query}” 질문은 ChatGPT에서 모아 앱을 활성화한 뒤 그대로 물어보세요. ChatGPT가 저장된 자료를 검색하고 원문을 확인해 출처와 함께 답합니다.`);
   }
 
   return (
@@ -116,7 +164,7 @@ export default function Home() {
         {active === "chat" && <section className="chat-panel">
           <div className="chat-intro"><span>✦</span><h2>내 자료에서 답을 찾아보세요</h2><p>답변에는 참고한 자료와 근거가 함께 표시됩니다.</p></div>
           {answer && <div className="answer"><small>모아의 답변</small><p>{answer}</p><div className="citations"><span>① 아이디어 메모 — 온보딩</span><span>② 경쟁 서비스 벤치마크</span></div></div>}
-          <div className="prompts"><button onClick={() => setQuery("최근 자료에서 핵심 인사이트를 정리해줘")}>최근 자료 핵심 인사이트</button><button onClick={() => setQuery("새 기획의 기회 영역을 찾아줘")}>기획 기회 영역 찾기</button></div>
+          <div className="prompts"><button onClick={() => setQuery("모아의 최근 자료에서 핵심 인사이트를 정리해줘")}>최근 자료 핵심 인사이트</button><button onClick={() => setQuery("모아 자료를 근거로 새 기획의 기회 영역을 찾아줘")}>기획 기회 영역 찾기</button></div>
         </section>}
 
         {active === "studio" && <section className="studio">
