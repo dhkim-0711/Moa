@@ -70,18 +70,27 @@ export async function POST(request: Request) {
       gte(discoveryCandidates.relevance, AUTO_SAVE_SCORE),
     ))
     .orderBy(desc(discoveryCandidates.relevance), desc(discoveryCandidates.id))
-    .limit(10);
+    .limit(5);
 
-  for (const candidate of highConfidence) {
+  const existingUrls = new Set((await db.select({ url: sources.url }).from(sources))
+    .map((item) => item.url)
+    .filter((url): url is string => Boolean(url)));
+  const prepared = await Promise.all(highConfidence.map(async (candidate) => {
+    if (existingUrls.has(candidate.url)) return { candidate, content: "", exists: true };
     try {
-      const [existing] = await db.select({ id: sources.id }).from(sources)
-        .where(eq(sources.url, candidate.url)).limit(1);
-      if (existing) {
+      return { candidate, content: await fetchReadablePage(candidate.url), exists: false };
+    } catch {
+      return { candidate, content: "", exists: false };
+    }
+  }));
+
+  for (const { candidate, content, exists } of prepared) {
+    try {
+      if (exists) {
         await db.update(discoveryCandidates).set({ status: "saved" })
           .where(eq(discoveryCandidates.id, candidate.id));
         continue;
       }
-      const content = await fetchReadablePage(candidate.url);
       if (content.length < 200) continue;
       await db.insert(sources).values({
         title: candidate.title,

@@ -17,8 +17,6 @@ const BASE_INTEREST_QUERIES = [
   "AI 반도체 NPU 시장 동향",
   "AI 반도체 NPU 기술 동향",
   "AI 반도체 NPU 기업 투자 동향",
-  "온디바이스 AI 엣지 NPU 동향",
-  "AI 가속기 HBM 칩렛 CXL 기술",
   "AI 반도체 정책 실증 사업 동향",
 ];
 
@@ -72,7 +70,7 @@ export function deriveInterestProfile(items: Array<{ title: string; content: str
       `${focus} 시장 동향`,
       `${focus} 기술 개발 동향`,
       `${focus} 기업 투자 사업 동향`,
-    ])].slice(0, 9),
+    ])].slice(0, 6),
   };
 }
 
