@@ -6,7 +6,9 @@ import { requireAuthorized } from "../../../../lib/auth";
 export async function GET(request: Request) {
   const denied = await requireAuthorized(request);
   if (denied) return denied;
-  const topics = await getDb().select().from(discoveryTopics).orderBy(asc(discoveryTopics.id));
+  const topics = await getDb().select().from(discoveryTopics)
+    .where(eq(discoveryTopics.origin, "manual"))
+    .orderBy(asc(discoveryTopics.id));
   return Response.json({ topics });
 }
 

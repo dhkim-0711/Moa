@@ -2,7 +2,7 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { blockedHosts, discoveryCandidates, sources } from "../../../../db/schema";
 import { requireAuthorized } from "../../../../lib/auth";
-import { readableText } from "../../../../lib/discovery";
+import { fetchReadablePage } from "../../../../lib/discovery";
 
 export async function GET(request: Request) {
   const denied = await requireAuthorized(request);
@@ -47,11 +47,7 @@ export async function POST(request: Request) {
   }
   let content = candidate.summary || "";
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-    const response = await fetch(candidate.url, { signal: controller.signal, headers: { "user-agent": "Mozilla/5.0 MoaKnowledge/1.0" } });
-    clearTimeout(timeout);
-    if (response.ok && (response.headers.get("content-type") || "").includes("text/html")) content = readableText(await response.text()).slice(0, 500_000) || content;
+    content = await fetchReadablePage(candidate.url) || content;
   } catch {}
   const [source] = await db.insert(sources).values({
     title: candidate.title,

@@ -1,0 +1,1 @@
+ALTER TABLE `discovery_topics` ADD `origin` text DEFAULT 'manual' NOT NULL;

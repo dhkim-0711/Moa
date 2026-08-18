@@ -101,7 +101,12 @@ export default function Home() {
 
   useEffect(() => {
     if (authState !== "ready") return;
-    fetch("/api/discovery/run", { method: "POST" }).catch(() => {});
+    fetch("/api/discovery/run", { method: "POST" })
+      .then((response) => response.json())
+      .then((data) => data.autoSaved > 0 && fetch("/api/sources")
+        .then((response) => response.json())
+        .then((result) => setSources(result.sources || [])))
+      .catch(() => {});
   }, [authState]);
 
   async function loadDiscovery() {
@@ -142,7 +147,13 @@ export default function Home() {
     try {
       const response = await fetch("/api/discovery/run?force=1", { method: "POST" });
       const data = await response.json();
-      setDiscoveryMessage(data.errors?.length ? `일부 검색에 실패했습니다: ${data.errors.join(", ")}` : `${data.added || 0}개의 새로운 자료 후보를 찾았습니다.`);
+      setDiscoveryMessage(data.errors?.length
+        ? `일부 검색에 실패했습니다: ${data.errors.join(", ")}`
+        : `${data.added || 0}개의 후보를 찾고, ${data.autoSaved || 0}개를 자료함에 자동 저장했습니다.`);
+      if (data.autoSaved > 0) {
+        const sourceData = await fetch("/api/sources").then((result) => result.json());
+        setSources(sourceData.sources || []);
+      }
       await loadDiscovery();
     } finally { setDiscoveryLoading(false); }
   }
@@ -424,7 +435,7 @@ export default function Home() {
             {visibleSources.length === 0 && <div className="empty-search"><span>⌕</span><strong>일치하는 자료가 없습니다.</strong><small>다른 검색어나 자료 유형을 사용해보세요.</small></div>}
           </section>
         </> : <section className="discovery-workspace">
-          <section className="discovery-intro"><div><span className="eyebrow">ZERO-COST DISCOVERY</span><h2>찾으러 다니지 않아도<br/><em>관심 자료가 모이도록.</em></h2><p>유료 검색·AI API 없이 공개 웹 검색 피드를 이용합니다. 모아를 열 때 하루 한 번 자동 확인하며, 언제든 직접 새로 검색할 수 있습니다.</p></div><button onClick={runDiscovery} disabled={discoveryLoading || topics.length === 0}>{discoveryLoading ? "검색 중…" : "지금 새 자료 찾기"}</button></section>
+          <section className="discovery-intro"><div><span className="eyebrow">ZERO-COST DISCOVERY</span><h2>찾으러 다니지 않아도<br/><em>관심 자료가 모이도록.</em></h2><p>자료함의 내용을 기준으로 AI·NPU 시장, 기술, 기업 동향을 탐색합니다. 관련도 90점 이상이며 원문 추출에 성공한 자료는 자동 저장하고, 70점 이상 후보는 이곳에서 검토할 수 있습니다.</p></div><button onClick={runDiscovery} disabled={discoveryLoading}>{discoveryLoading ? "검색 중…" : "지금 새 자료 찾기"}</button></section>
           <section className="topic-panel"><div><h3>관심 주제</h3><span>최대 10개를 구체적으로 적을수록 결과가 좋아집니다.</span></div><form onSubmit={addTopic}><input value={newTopic} onChange={(event) => setNewTopic(event.target.value)} maxLength={60} placeholder="예: AI 반도체 실증 지원사업" disabled={topics.length >= 10}/><button disabled={topics.length >= 10}>추가</button></form><div className="topic-chips">{topics.map((topic) => <span key={topic.id}>{topic.query}<button onClick={() => removeTopic(topic.id)} aria-label={`${topic.query} 삭제`}>×</button></span>)}{topics.length === 0 && <small>등록된 관심 주제가 없습니다.</small>}</div></section>
           <section className="weekly-report"><div><small>최근 7일 발견</small><strong>{weekly.discovered}</strong></div><div><small>자료함에 저장</small><strong>{weekly.saved}</strong></div><div><small>제외·차단</small><strong>{weekly.dismissed}</strong></div><div><small>가장 활발한 주제</small><strong>{weekly.topTopic || "—"}</strong></div></section>
           {discoveryMessage && <div className="discovery-message">{discoveryMessage}</div>}

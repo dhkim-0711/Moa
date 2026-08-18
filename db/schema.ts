@@ -15,6 +15,7 @@ export const sources = sqliteTable("sources", {
 export const discoveryTopics = sqliteTable("discovery_topics", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   query: text("query").notNull(),
+  origin: text("origin").notNull().default("manual"),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   lastRunAt: text("last_run_at"),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
