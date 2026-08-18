@@ -13,6 +13,10 @@ type Source = {
   createdAt: string;
 };
 
+type DiscoveryTopic = { id: number; query: string; lastRunAt?: string | null };
+type DiscoveryCandidate = { id: number; query: string; title: string; url: string; summary?: string | null; host?: string | null; relevance: number; publishedAt?: string | null };
+type WeeklyDiscovery = { discovered: number; saved: number; dismissed: number; topTopic?: string | null };
+
 const seedSources: Source[] = [
   { id: -1, title: "2026 제품 전략 리서치.pdf", kind: "PDF", excerpt: "고객 인터뷰와 시장 진입 전략 정리", createdAt: "오늘" },
   { id: -2, title: "경쟁 서비스 벤치마크", kind: "WEB", excerpt: "기능·가격·포지셔닝 비교", createdAt: "어제" },
@@ -69,6 +73,13 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchPreview, setSearchPreview] = useState<Source | null>(null);
   const [helpTab, setHelpTab] = useState<"chatgpt" | "mcp">("mcp");
+  const [view, setView] = useState<"library" | "discovery">("library");
+  const [topics, setTopics] = useState<DiscoveryTopic[]>([]);
+  const [candidates, setCandidates] = useState<DiscoveryCandidate[]>([]);
+  const [weekly, setWeekly] = useState<WeeklyDiscovery>({ discovered: 0, saved: 0, dismissed: 0 });
+  const [newTopic, setNewTopic] = useState("");
+  const [discoveryLoading, setDiscoveryLoading] = useState(false);
+  const [discoveryMessage, setDiscoveryMessage] = useState("");
   const [sources, setSources] = useState<Source[]>(seedSources);
   const [modal, setModal] = useState<"link" | "memo" | "file" | "help" | null>(null);
   const [title, setTitle] = useState("");
@@ -87,6 +98,62 @@ export default function Home() {
       })
       .catch(() => setAuthState("locked"));
   }, []);
+
+  useEffect(() => {
+    if (authState !== "ready") return;
+    fetch("/api/discovery/run", { method: "POST" }).catch(() => {});
+  }, [authState]);
+
+  async function loadDiscovery() {
+    const [topicData, candidateData] = await Promise.all([
+      fetch("/api/discovery/topics").then((response) => response.json()),
+      fetch("/api/discovery/candidates").then((response) => response.json()),
+    ]);
+    setTopics(topicData.topics || []);
+    setCandidates(candidateData.candidates || []);
+    setWeekly(candidateData.weekly || { discovered: 0, saved: 0, dismissed: 0 });
+  }
+
+  async function openDiscovery() {
+    setView("discovery");
+    setDiscoveryLoading(true);
+    try { await loadDiscovery(); } finally { setDiscoveryLoading(false); }
+  }
+
+  async function addTopic(event: FormEvent) {
+    event.preventDefault();
+    if (!newTopic.trim()) return;
+    const response = await fetch("/api/discovery/topics", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: newTopic }) });
+    const data = await response.json();
+    if (!response.ok) return setDiscoveryMessage(data.error || "주제를 추가하지 못했습니다.");
+    setNewTopic("");
+    setDiscoveryMessage("관심 주제를 추가했습니다. 지금 검색을 눌러 첫 자료를 찾아보세요.");
+    await loadDiscovery();
+  }
+
+  async function removeTopic(id: number) {
+    await fetch("/api/discovery/topics", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ id }) });
+    await loadDiscovery();
+  }
+
+  async function runDiscovery() {
+    setDiscoveryLoading(true);
+    setDiscoveryMessage("웹 전체에서 새로운 자료를 찾고 있습니다…");
+    try {
+      const response = await fetch("/api/discovery/run?force=1", { method: "POST" });
+      const data = await response.json();
+      setDiscoveryMessage(data.errors?.length ? `일부 검색에 실패했습니다: ${data.errors.join(", ")}` : `${data.added || 0}개의 새로운 자료 후보를 찾았습니다.`);
+      await loadDiscovery();
+    } finally { setDiscoveryLoading(false); }
+  }
+
+  async function handleCandidate(candidate: DiscoveryCandidate, action: "save" | "dismiss" | "block") {
+    const response = await fetch("/api/discovery/candidates", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: candidate.id, action }) });
+    const data = await response.json();
+    if (data.source) setSources((items) => [data.source, ...items]);
+    setDiscoveryMessage(action === "save" ? "정식 자료함에 저장했습니다." : action === "block" ? `${candidate.host || "이 출처"}를 차단했습니다.` : "관심 없음으로 처리했습니다.");
+    await loadDiscovery();
+  }
 
   async function unlock(event: FormEvent) {
     event.preventDefault();
@@ -278,6 +345,7 @@ export default function Home() {
   }
 
   function openLibraryHome() {
+    setView("library");
     setSearchQuery("");
     setFilterKind("ALL");
     setShowAll(true);
@@ -323,7 +391,8 @@ export default function Home() {
         <div className="brand"><span className="brand-mark">M</span><span>모아</span></div>
         <button className="new-button" onClick={() => setModal("file")}><span>＋</span> 새 자료 추가</button>
         <nav>
-          <button className="active" onClick={openLibraryHome}><span>▦</span> 자료함 <b>{counts.all}</b></button>
+          <button className={view === "library" ? "active" : ""} onClick={openLibraryHome}><span>▦</span> 자료함 <b>{counts.all}</b></button>
+          <button className={view === "discovery" ? "active" : ""} onClick={openDiscovery}><span>✦</span> 자동 수집함 <b>{candidates.length || ""}</b></button>
           <button onClick={() => setModal("help")}><span>⌁</span> ChatGPT 연결 방법</button>
         </nav>
         <div className="side-label">자료 유형</div>
@@ -336,9 +405,9 @@ export default function Home() {
       </aside>
 
       <section className="workspace">
-        <header><div><h1>내 자료함</h1><p>ChatGPT가 활용할 PDF, 워드, 엑셀, PPT, HWPX와 메모를 저장하고 관리하세요.</p></div><button className="help" onClick={() => setModal("help")} aria-label="사용 방법">?</button></header>
+        <header><div><h1>{view === "library" ? "내 자료함" : "자동 수집함"}</h1><p>{view === "library" ? "ChatGPT가 활용할 PDF, 워드, 엑셀, PPT, HWPX와 메모를 저장하고 관리하세요." : "관심 주제를 바탕으로 무료 웹 검색에서 새로운 자료 후보를 모읍니다."}</p></div><button className="help" onClick={() => setModal("help")} aria-label="사용 방법">?</button></header>
 
-        <>
+        {view === "library" ? <>
           <section className="hero-card">
             <div><span className="eyebrow">PERSONAL KNOWLEDGE BASE</span><h2>생각의 재료를<br/><em>한곳에 모으세요.</em></h2><p>PDF, 워드, 엑셀, PPT, HWPX까지. 모아가 읽고 연결해<br/>당신의 다음 기획과 보고서를 돕습니다.</p></div>
             <div className="orb"><span>PDF</span><span>WORD</span><span>EXCEL</span><span>PPT</span><i>✦</i></div>
@@ -354,7 +423,15 @@ export default function Home() {
             {(searchQuery || showAll || filterKind !== "ALL" ? visibleSources : visibleSources.slice(0, 6)).map((source) => <article className={source.id > 0 ? "openable" : ""} key={source.id} onClick={() => { if (searchQuery.trim()) setSearchPreview(source); else if (source.id > 0) window.open(`/source/${source.id}`, "_blank", "noopener,noreferrer"); }}><div className={`file-icon ${source.kind.toLowerCase()}`}>{source.kind === "WEB" ? "⌁" : source.kind === "MEMO" ? "✎" : "▤"}</div><span className="kind">{source.kind}</span><h4>{source.title}</h4><p>{source.excerpt}</p><footer><span>{source.createdAt}</span><button className="delete-source" onClick={(event) => { event.stopPropagation(); deleteSource(source); }} aria-label={`${source.title} 삭제`}>삭제</button></footer></article>)}
             {visibleSources.length === 0 && <div className="empty-search"><span>⌕</span><strong>일치하는 자료가 없습니다.</strong><small>다른 검색어나 자료 유형을 사용해보세요.</small></div>}
           </section>
-        </>
+        </> : <section className="discovery-workspace">
+          <section className="discovery-intro"><div><span className="eyebrow">ZERO-COST DISCOVERY</span><h2>찾으러 다니지 않아도<br/><em>관심 자료가 모이도록.</em></h2><p>유료 검색·AI API 없이 공개 웹 검색 피드를 이용합니다. 모아를 열 때 하루 한 번 자동 확인하며, 언제든 직접 새로 검색할 수 있습니다.</p></div><button onClick={runDiscovery} disabled={discoveryLoading || topics.length === 0}>{discoveryLoading ? "검색 중…" : "지금 새 자료 찾기"}</button></section>
+          <section className="topic-panel"><div><h3>관심 주제</h3><span>최대 10개를 구체적으로 적을수록 결과가 좋아집니다.</span></div><form onSubmit={addTopic}><input value={newTopic} onChange={(event) => setNewTopic(event.target.value)} maxLength={60} placeholder="예: AI 반도체 실증 지원사업" disabled={topics.length >= 10}/><button disabled={topics.length >= 10}>추가</button></form><div className="topic-chips">{topics.map((topic) => <span key={topic.id}>{topic.query}<button onClick={() => removeTopic(topic.id)} aria-label={`${topic.query} 삭제`}>×</button></span>)}{topics.length === 0 && <small>등록된 관심 주제가 없습니다.</small>}</div></section>
+          <section className="weekly-report"><div><small>최근 7일 발견</small><strong>{weekly.discovered}</strong></div><div><small>자료함에 저장</small><strong>{weekly.saved}</strong></div><div><small>제외·차단</small><strong>{weekly.dismissed}</strong></div><div><small>가장 활발한 주제</small><strong>{weekly.topTopic || "—"}</strong></div></section>
+          {discoveryMessage && <div className="discovery-message">{discoveryMessage}</div>}
+          <div className="section-title"><div><h3>수집 후보</h3><span>{candidates.length}개의 자료</span></div><small>검토 후 정식 자료함에 저장하세요.</small></div>
+          <section className="candidate-list">{candidates.map((candidate) => <article key={candidate.id}><div className="candidate-score"><strong>{candidate.relevance}</strong><small>관련도</small></div><div className="candidate-copy"><span>{candidate.query} · {candidate.host}</span><h4><a href={candidate.url} target="_blank" rel="noreferrer">{candidate.title}</a></h4><p>{candidate.summary || "검색 결과에 요약이 없습니다."}</p></div><div className="candidate-actions"><button className="save-candidate" onClick={() => handleCandidate(candidate, "save")}>자료함에 저장</button><button onClick={() => handleCandidate(candidate, "dismiss")}>관심 없음</button><button onClick={() => handleCandidate(candidate, "block")}>출처 차단</button></div></article>)}{!discoveryLoading && candidates.length === 0 && <div className="empty-search"><span>✦</span><strong>아직 수집된 후보가 없습니다.</strong><small>관심 주제를 추가하고 새 자료 찾기를 실행해보세요.</small></div>}</section>
+          <p className="free-search-note">무료 공개 검색 피드 기반이라 결과 범위와 안정성이 달라질 수 있습니다. 개인·비영리 용도로만 사용하세요.</p>
+        </section>}
       </section>
 
       {modal && <div className="modal-backdrop" onMouseDown={() => setModal(null)}><div className="modal" onMouseDown={(e) => e.stopPropagation()}>
