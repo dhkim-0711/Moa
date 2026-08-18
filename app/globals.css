@@ -50,7 +50,7 @@ header p { margin:0; color:var(--muted); font-size:14px; }
 .source-grid { display:grid; grid-template-columns:1fr; gap:9px; }
 .source-grid article { min-height:92px; padding:16px 18px; background:#fff; border:1px solid var(--line); border-radius:12px; position:relative; display:grid; grid-template-columns:42px minmax(0,1fr) auto; grid-template-rows:auto auto; column-gap:14px; align-items:center; }
 .source-grid article.openable{cursor:pointer}.source-grid article.openable:hover{border-color:#b9c8c0;box-shadow:0 8px 24px #27423812;transform:translateY(-1px)}
-.file-icon { grid-column:1;grid-row:1/3;width:38px;height:38px;border-radius:9px;display:grid;place-items:center;background:#ecddd7;color:#a45644}.file-icon.web{background:#dceae2;color:#3b715b}.file-icon.memo{background:#e6e0ed;color:#735c8f}
+.file-icon { grid-column:1;grid-row:1/3;width:38px;height:38px;border-radius:9px;display:grid;place-items:center;background:#ecddd7;color:#a45644}.file-icon.web{background:#dceae2;color:#3b715b}.file-icon.auto_web{background:#e0e8f5;color:#46689a}.file-icon.memo{background:#e6e0ed;color:#735c8f}
 .kind { grid-column:3;grid-row:1;font-size:9px;font-weight:800;color:#9aa19d;letter-spacing:.08em;text-align:right }
 .source-grid h4 { grid-column:2;grid-row:1;margin:0 0 4px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }.source-grid p{grid-column:2;grid-row:2;margin:0;color:#89928d;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .source-grid footer{grid-column:3;grid-row:2;display:flex;align-items:center;gap:12px;color:#a0a5a2;font-size:10px}.source-grid footer button{border:0;background:transparent;color:#89918d}

@@ -51,7 +51,7 @@ export async function POST(request: Request) {
   } catch {}
   const [source] = await db.insert(sources).values({
     title: candidate.title,
-    kind: "WEB",
+    kind: "AUTO_WEB",
     url: candidate.url,
     excerpt: (candidate.summary || content).slice(0, 180),
     content,

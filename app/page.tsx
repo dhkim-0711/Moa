@@ -28,6 +28,10 @@ const DOCUMENT_KINDS = [
   "PPTX", "ODT", "RTF", "TXT", "MD", "CSV", "JSON", "HTML", "HTM", "XML", "FILE",
 ];
 
+function sourceKindLabel(kind: string) {
+  return kind === "AUTO_WEB" ? "자동수집" : kind;
+}
+
 function matchingSnippets(source: Source, query: string) {
   const text = source.content || source.excerpt || source.title;
   const needle = query.trim().toLocaleLowerCase("ko");
@@ -69,7 +73,7 @@ export default function Home() {
   const [accessCode, setAccessCode] = useState("");
   const [loginError, setLoginError] = useState("");
   const [showAll, setShowAll] = useState(false);
-  const [filterKind, setFilterKind] = useState<"ALL" | "DOCUMENT" | "WEB" | "MEMO">("ALL");
+  const [filterKind, setFilterKind] = useState<"ALL" | "DOCUMENT" | "WEB" | "AUTO_WEB" | "MEMO">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchPreview, setSearchPreview] = useState<Source | null>(null);
   const [helpTab, setHelpTab] = useState<"chatgpt" | "mcp">("mcp");
@@ -187,6 +191,7 @@ export default function Home() {
     all: sources.length,
     documents: sources.filter((s) => DOCUMENT_KINDS.includes(s.kind)).length,
     web: sources.filter((s) => s.kind === "WEB").length,
+    automatic: sources.filter((s) => s.kind === "AUTO_WEB").length,
     memo: sources.filter((s) => s.kind === "MEMO").length,
   }), [sources]);
   const visibleSources = useMemo(() => {
@@ -410,6 +415,7 @@ export default function Home() {
         <div className="filters">
           <button className={filterKind === "DOCUMENT" ? "selected" : ""} onClick={() => { setFilterKind("DOCUMENT"); setShowAll(true); }}>문서 <b>{counts.documents}</b></button>
           <button className={filterKind === "WEB" ? "selected" : ""} onClick={() => { setFilterKind("WEB"); setShowAll(true); }}>웹페이지 <b>{counts.web}</b></button>
+          <button className={filterKind === "AUTO_WEB" ? "selected" : ""} onClick={() => { setFilterKind("AUTO_WEB"); setShowAll(true); }}>자동수집 <b>{counts.automatic}</b></button>
           <button className={filterKind === "MEMO" ? "selected" : ""} onClick={() => { setFilterKind("MEMO"); setShowAll(true); }}>메모 <b>{counts.memo}</b></button>
         </div>
         <div className="sidebar-foot"><span className="avatar">나</span><div><strong>나의 지식 공간</strong><small>개인 전용</small></div><button onClick={logout} aria-label="로그아웃">나가기</button></div>
@@ -429,9 +435,9 @@ export default function Home() {
             <button onClick={() => setModal("memo")}><i className="violet">✎</i><span><strong>메모 남기기</strong><small>떠오른 생각을 바로 기록</small></span><b>›</b></button>
           </section>
           <div className="library-search"><span>⌕</span><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="제목, 메모, 문서 본문에서 검색" aria-label="자료 검색" />{searchQuery && <button onClick={() => setSearchQuery("")} aria-label="검색어 지우기">×</button>}</div>
-          <div className="section-title"><div><h3>{searchQuery ? "검색 결과" : filterKind !== "ALL" ? `${filterKind === "DOCUMENT" ? "문서" : filterKind === "WEB" ? "웹페이지" : "메모"} 자료` : showAll ? "전체 자료" : "최근 자료"}</h3><span>{visibleSources.length}개의 자료</span></div><button onClick={() => { if (searchQuery) setSearchQuery(""); else if (filterKind !== "ALL") setFilterKind("ALL"); else setShowAll((value) => !value); }}>{searchQuery ? "검색 지우기" : filterKind !== "ALL" ? "필터 해제" : showAll ? "최근 자료만 보기" : "전체 보기 →"}</button></div>
+          <div className="section-title"><div><h3>{searchQuery ? "검색 결과" : filterKind !== "ALL" ? `${filterKind === "DOCUMENT" ? "문서" : filterKind === "WEB" ? "웹페이지" : filterKind === "AUTO_WEB" ? "자동수집" : "메모"} 자료` : showAll ? "전체 자료" : "최근 자료"}</h3><span>{visibleSources.length}개의 자료</span></div><button onClick={() => { if (searchQuery) setSearchQuery(""); else if (filterKind !== "ALL") setFilterKind("ALL"); else setShowAll((value) => !value); }}>{searchQuery ? "검색 지우기" : filterKind !== "ALL" ? "필터 해제" : showAll ? "최근 자료만 보기" : "전체 보기 →"}</button></div>
           <section className="source-grid">
-            {(searchQuery || showAll || filterKind !== "ALL" ? visibleSources : visibleSources.slice(0, 6)).map((source) => <article className={source.id > 0 ? "openable" : ""} key={source.id} onClick={() => { if (searchQuery.trim()) setSearchPreview(source); else if (source.id > 0) window.open(`/source/${source.id}`, "_blank", "noopener,noreferrer"); }}><div className={`file-icon ${source.kind.toLowerCase()}`}>{source.kind === "WEB" ? "⌁" : source.kind === "MEMO" ? "✎" : "▤"}</div><span className="kind">{source.kind}</span><h4>{source.title}</h4><p>{source.excerpt}</p><footer><span>{source.createdAt}</span><button className="delete-source" onClick={(event) => { event.stopPropagation(); deleteSource(source); }} aria-label={`${source.title} 삭제`}>삭제</button></footer></article>)}
+            {(searchQuery || showAll || filterKind !== "ALL" ? visibleSources : visibleSources.slice(0, 6)).map((source) => <article className={source.id > 0 ? "openable" : ""} key={source.id} onClick={() => { if (searchQuery.trim()) setSearchPreview(source); else if (source.id > 0) window.open(`/source/${source.id}`, "_blank", "noopener,noreferrer"); }}><div className={`file-icon ${source.kind.toLowerCase()}`}>{source.kind === "WEB" || source.kind === "AUTO_WEB" ? "⌁" : source.kind === "MEMO" ? "✎" : "▤"}</div><span className="kind">{sourceKindLabel(source.kind)}</span><h4>{source.title}</h4><p>{source.excerpt}</p><footer><span>{source.createdAt}</span><button className="delete-source" onClick={(event) => { event.stopPropagation(); deleteSource(source); }} aria-label={`${source.title} 삭제`}>삭제</button></footer></article>)}
             {visibleSources.length === 0 && <div className="empty-search"><span>⌕</span><strong>일치하는 자료가 없습니다.</strong><small>다른 검색어나 자료 유형을 사용해보세요.</small></div>}
           </section>
         </> : <section className="discovery-workspace">
@@ -454,7 +460,7 @@ export default function Home() {
       {searchPreview && <div className="modal-backdrop" onMouseDown={() => setSearchPreview(null)}>
         <div className="modal search-preview" role="dialog" aria-modal="true" aria-label="검색 내용 미리보기" onMouseDown={(event) => event.stopPropagation()}>
           <button className="close" onClick={() => setSearchPreview(null)}>×</button>
-          <span className="search-preview-kind">{searchPreview.kind}</span>
+          <span className="search-preview-kind">{sourceKindLabel(searchPreview.kind)}</span>
           <h2>{searchPreview.title}</h2>
           <p>‘{searchQuery}’와 관련된 내용만 표시합니다.</p>
           <div className="match-list">

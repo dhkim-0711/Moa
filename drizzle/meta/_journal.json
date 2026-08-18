@@ -29,6 +29,13 @@
       "when": 1787042952034,
       "tag": "0003_perpetual_senator_kelly",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787043359899,
+      "tag": "0004_label_auto_collected_sources",
+      "breakpoints": true
     }
   ]
 }
