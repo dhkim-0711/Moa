@@ -1,98 +1,39 @@
-# vinext-starter
+# 모아 (Moa)
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+모아는 개인이 보유한 파일, 웹페이지, 메모를 한곳에 저장하고 검색할 수 있게 만든 개인 지식 작업실입니다. 저장한 자료는 MCP를 통해 ChatGPT 같은 AI 도구에서 검색·조회하여 기획서와 보고서 작성의 근거로 활용할 수 있습니다.
 
-## Prerequisites
+## 주요 기능
 
-- Node.js `>=22.13.0`
+- PDF, DOCX, XLSX·XLS, PPTX, HWPX 등 파일 업로드 및 텍스트 추출
+- 웹페이지와 메모 저장
+- 제목·본문 통합 검색과 관련 내용 확인
+- 관심 주제 기반 무료 웹 자료 탐색
+- 관련도 70점 이상인 수집 후보만 표시
+- 수집 후보 저장, 제외, 출처 차단
+- MCP를 통한 자료 검색, 원문 조회, 최근 자료 조회
+- 비밀번호 기반 개인용 화면 보호
 
-## Quick Start
+## 구조 문서
+
+- [모아 구조 및 동작 설명](docs/모아_구조_설명.md)
+- [아키텍처 다이어그램 원본](docs/moa-architecture.mmd)
+
+## 개발 실행
+
+Node.js 22.13 이상이 필요합니다.
 
 ```bash
 npm install
 npm run dev
-npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+Windows PowerShell에서는 다음 명령으로 실행할 수 있습니다.
 
-## Included Shape
-
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```powershell
+$env:WRANGLER_LOG_PATH='.wrangler/wrangler.log'
+npx vinext dev
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+## 보안 주의사항
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+접속 비밀번호, 세션 비밀값, MCP 토큰은 저장소에 넣지 않습니다. 운영 환경의 비밀 환경변수로만 설정해야 합니다.

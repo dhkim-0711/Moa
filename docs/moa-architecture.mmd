@@ -1,0 +1,38 @@
+flowchart LR
+    subgraph client ["사용자 및 AI 도구"]
+        browser["모아 웹 화면"]
+        aiClient["ChatGPT 등 MCP 클라이언트"]
+    end
+    subgraph gateway ["웹 진입점"]
+        sites["OpenAI Sites와 Cloudflare"]
+    end
+    subgraph service ["모아 애플리케이션"]
+        webApp["Next.js와 vinext 웹 앱"]
+        sourceApi["자료 관리 API"]
+        discoveryApi["자동 수집 API"]
+        mcpApi["MCP 서버 API"]
+    end
+    subgraph datastore ["저장소"]
+        d1["Cloudflare D1 메타데이터와 본문"]
+        r2["Cloudflare R2 원본 파일"]
+    end
+    subgraph external ["외부 서비스"]
+        publicWeb["공개 웹페이지"]
+        searchFeed["무료 웹 검색 피드"]
+    end
+
+    browser -->|"HTTPS"| sites
+    aiClient -->|"Remote HTTP MCP"| sites
+    sites -->|"화면 요청"| webApp
+    sites -->|"자료 요청"| sourceApi
+    sites -->|"수집 요청"| discoveryApi
+    sites -->|"MCP 요청"| mcpApi
+    webApp -->|"API 호출"| sourceApi
+    webApp -->|"수집함 호출"| discoveryApi
+    sourceApi -->|"자료 기록"| d1
+    sourceApi -->|"파일 저장"| r2
+    discoveryApi -->|"후보와 주제 기록"| d1
+    mcpApi -->|"자료 검색과 조회"| d1
+    sourceApi -.->|"페이지 본문 가져오기"| publicWeb
+    discoveryApi -.->|"검색 결과 가져오기"| searchFeed
+    discoveryApi -.->|"선택한 페이지 저장"| publicWeb
