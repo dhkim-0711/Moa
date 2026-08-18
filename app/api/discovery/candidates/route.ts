@@ -7,11 +7,18 @@ import { readableText } from "../../../../lib/discovery";
 export async function GET(request: Request) {
   const denied = await requireAuthorized(request);
   if (denied) return denied;
+  const minimumRelevance = 70;
   const candidates = await getDb().select().from(discoveryCandidates)
-    .where(eq(discoveryCandidates.status, "pending"))
+    .where(and(
+      eq(discoveryCandidates.status, "pending"),
+      gte(discoveryCandidates.relevance, minimumRelevance),
+    ))
     .orderBy(desc(discoveryCandidates.relevance), desc(discoveryCandidates.id)).limit(100);
   const weekStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const weeklyRows = await getDb().select().from(discoveryCandidates).where(gte(discoveryCandidates.discoveredAt, weekStart));
+  const weeklyRows = await getDb().select().from(discoveryCandidates).where(and(
+    gte(discoveryCandidates.discoveredAt, weekStart),
+    gte(discoveryCandidates.relevance, minimumRelevance),
+  ));
   const byTopic = weeklyRows.reduce<Record<string, number>>((totals, item) => ({ ...totals, [item.query]: (totals[item.query] || 0) + 1 }), {});
   return Response.json({ candidates, weekly: {
     discovered: weeklyRows.length,
