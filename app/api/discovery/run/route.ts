@@ -2,7 +2,7 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { blockedHosts, discoveryCandidates, discoveryTopics, sources } from "../../../../db/schema";
 import { requireAuthorized } from "../../../../lib/auth";
-import { deriveInterestProfile, fetchReadablePage, relevanceScore, searchWeb } from "../../../../lib/discovery";
+import { deriveInterestProfile, fetchReadablePage, relevanceScore, searchWeb, similarTitle } from "../../../../lib/discovery";
 
 const DAY = 24 * 60 * 60 * 1000;
 const AUTO_SAVE_SCORE = 90;
@@ -63,6 +63,20 @@ export async function POST(request: Request) {
     }
   }
 
+  const previouslyHigh = await db.select().from(discoveryCandidates)
+    .where(and(
+      eq(discoveryCandidates.status, "pending"),
+      gte(discoveryCandidates.relevance, AUTO_SAVE_SCORE),
+    ))
+    .limit(100);
+  for (const candidate of previouslyHigh) {
+    const recalculated = relevanceScore(candidate.query, candidate.title, candidate.summary || "", profile.terms);
+    if (recalculated !== candidate.relevance) {
+      await db.update(discoveryCandidates).set({ relevance: recalculated })
+        .where(eq(discoveryCandidates.id, candidate.id));
+    }
+  }
+
   let autoSaved = 0;
   const highConfidence = await db.select().from(discoveryCandidates)
     .where(and(
@@ -72,26 +86,36 @@ export async function POST(request: Request) {
     .orderBy(desc(discoveryCandidates.relevance), desc(discoveryCandidates.id))
     .limit(5);
 
-  const existingUrls = new Set((await db.select({ url: sources.url }).from(sources))
+  const existingSources = await db.select({ url: sources.url, title: sources.title }).from(sources);
+  const existingUrls = new Set(existingSources
     .map((item) => item.url)
     .filter((url): url is string => Boolean(url)));
   const prepared = await Promise.all(highConfidence.map(async (candidate) => {
-    if (existingUrls.has(candidate.url)) return { candidate, content: "", exists: true };
+    if (existingUrls.has(candidate.url)) return { candidate, content: "", exists: true, duplicate: false };
+    if (existingSources.some((source) => similarTitle(source.title, candidate.title))) {
+      return { candidate, content: "", exists: false, duplicate: true };
+    }
     try {
-      return { candidate, content: await fetchReadablePage(candidate.url), exists: false };
+      return { candidate, content: await fetchReadablePage(candidate.url), exists: false, duplicate: false };
     } catch {
-      return { candidate, content: "", exists: false };
+      return { candidate, content: "", exists: false, duplicate: false };
     }
   }));
 
-  for (const { candidate, content, exists } of prepared) {
+  const knownTitles = existingSources.map((source) => source.title);
+  for (const { candidate, content, exists, duplicate } of prepared) {
     try {
       if (exists) {
         await db.update(discoveryCandidates).set({ status: "saved" })
           .where(eq(discoveryCandidates.id, candidate.id));
         continue;
       }
-      if (content.length < 200) continue;
+      if (duplicate || knownTitles.some((title) => similarTitle(title, candidate.title))) {
+        await db.update(discoveryCandidates).set({ status: "dismissed" })
+          .where(eq(discoveryCandidates.id, candidate.id));
+        continue;
+      }
+      if (content.length < 500) continue;
       await db.insert(sources).values({
         title: candidate.title,
         kind: "AUTO_WEB",
@@ -100,6 +124,7 @@ export async function POST(request: Request) {
         content,
         status: "ready",
       });
+      knownTitles.push(candidate.title);
       await db.update(discoveryCandidates).set({ status: "saved" })
         .where(eq(discoveryCandidates.id, candidate.id));
       autoSaved += 1;

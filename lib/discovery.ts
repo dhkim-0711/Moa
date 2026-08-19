@@ -20,6 +20,15 @@ const BASE_INTEREST_QUERIES = [
   "AI 반도체 정책 실증 사업 동향",
 ];
 
+const TITLE_ANCHORS = ["npu", "ai 반도체", "ai semiconductor", "ai 가속기", "ai accelerator"];
+const MARKET_TERMS = ["시장규모", "시장 규모", "점유율", "매출", "출하량", "투자액", "cagr"];
+const TECH_TERMS = ["tops", "tops/w", "전력효율", "전력 효율", "추론 성능", "hbm", "칩렛", "cxl", "공정"];
+const COMPANY_EVENTS = ["수주", "양산", "투자유치", "투자 유치", "공급계약", "공급 계약", "협력", "인수"];
+const COMPANY_TERMS = [
+  "mangoboost", "망고부스트", "퓨리오사ai", "리벨리온", "딥엑스", "사피온",
+  "엔비디아", "nvidia", "amd", "인텔", "intel", "삼성전자", "sk하이닉스",
+];
+
 function decode(value: string) {
   const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
   return value
@@ -84,7 +93,35 @@ export function relevanceScore(query: string, title: string, summary: string, in
     const normalized = term.toLocaleLowerCase("ko");
     return normalizedTitle.includes(normalized) || normalizedSummary.includes(normalized);
   }).length;
-  return Math.min(99, 50 + titleMatches * 14 + summaryMatches * 5 + Math.min(15, interestMatches * 3));
+  const combined = `${normalizedTitle} ${normalizedSummary}`;
+  const hasTitleAnchor = TITLE_ANCHORS.some((term) => normalizedTitle.includes(term));
+  const marketEvidence = MARKET_TERMS.some((term) => combined.includes(term))
+    && /(?:\d+(?:\.\d+)?\s*(?:%|조원|억원|만원|달러|usd|배|대|개)|cagr\s*\d)/i.test(combined);
+  const techHits = TECH_TERMS.filter((term) => combined.includes(term)).length;
+  const techEvidence = techHits >= 2
+    || (techHits >= 1 && /\d+(?:\.\d+)?\s*(?:tops(?:\/w)?|w|nm|gb\/s|%)/i.test(combined));
+  const companyEvidence = COMPANY_TERMS.some((term) => combined.includes(term))
+    && COMPANY_EVENTS.some((term) => combined.includes(term));
+  const specificEvidence = marketEvidence || techEvidence || companyEvidence;
+  const baseScore = Math.min(89, 45 + titleMatches * 10 + summaryMatches * 4 + Math.min(10, interestMatches * 2));
+  if (!hasTitleAnchor || !specificEvidence) return baseScore;
+  const evidenceCount = [marketEvidence, techEvidence, companyEvidence].filter(Boolean).length;
+  const titleInterestMatches = interestTerms.filter((term) => normalizedTitle.includes(term.toLocaleLowerCase("ko"))).length;
+  return Math.min(99, 90 + Math.min(6, evidenceCount * 2 + titleInterestMatches));
+}
+
+export function similarTitle(left: string, right: string) {
+  const stopWords = new Set(["관련", "대한", "위한", "통해", "이번", "최근", "발표", "전망", "동향"]);
+  const tokens = (value: string) => new Set(value.toLocaleLowerCase("ko")
+    .replace(/[^0-9a-z가-힣]+/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 1 && !stopWords.has(word)));
+  const a = tokens(left);
+  const b = tokens(right);
+  if (!a.size || !b.size) return false;
+  const intersection = [...a].filter((word) => b.has(word)).length;
+  const union = new Set([...a, ...b]).size;
+  return intersection / union >= 0.65;
 }
 
 export function readableText(html: string) {
