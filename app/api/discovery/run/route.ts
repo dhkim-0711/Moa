@@ -2,7 +2,8 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { blockedHosts, discoveryCandidates, discoveryTopics, sources } from "../../../../db/schema";
 import { requireAuthorized } from "../../../../lib/auth";
-import { deriveInterestProfile, fetchReadablePage, relevanceScore, searchWeb, similarTitle } from "../../../../lib/discovery";
+import { canonicalUrl, deriveInterestProfile, fetchReadablePage, relevanceScore, searchWeb, similarContent, similarTitle } from "../../../../lib/discovery";
+import { collectDailyDeskCandidates } from "../../../../lib/daily-desk";
 
 const DAY = 24 * 60 * 60 * 1000;
 const AUTO_SAVE_SCORE = 90;
@@ -34,13 +35,22 @@ export async function POST(request: Request) {
   }
   let added = 0;
   const errors: string[] = [];
+  const knownCandidates = await db.select({ title: discoveryCandidates.title, url: discoveryCandidates.url }).from(discoveryCandidates);
+  const knownCandidateUrls = new Set(knownCandidates.map((item) => canonicalUrl(item.url)));
+  const knownCandidateTitles = knownCandidates.map((item) => item.title);
   for (const plan of plans.values()) {
     try {
-      const results = await searchWeb(plan.query);
+      const [webResults, dailyDeskResults] = await Promise.all([
+        searchWeb(plan.query),
+        collectDailyDeskCandidates(plan.query),
+      ]);
+      const results = [...dailyDeskResults, ...webResults];
       for (const result of results) {
         let host = "";
         try { host = new URL(result.url).hostname.replace(/^www\./, ""); } catch { continue; }
         if (blocked.has(host)) continue;
+        const normalizedUrl = canonicalUrl(result.url);
+        if (knownCandidateUrls.has(normalizedUrl) || knownCandidateTitles.some((title) => similarTitle(title, result.title))) continue;
         const score = relevanceScore(plan.query, result.title, result.summary, profile.terms);
         const inserted = await db.insert(discoveryCandidates).values({
           topicId: plan.topicId,
@@ -53,6 +63,10 @@ export async function POST(request: Request) {
           publishedAt: result.publishedAt,
         }).onConflictDoNothing().returning({ id: discoveryCandidates.id });
         added += inserted.length;
+        if (inserted.length) {
+          knownCandidateUrls.add(normalizedUrl);
+          knownCandidateTitles.push(result.title);
+        }
       }
       if (plan.topicRowId) {
         await db.update(discoveryTopics).set({ lastRunAt: new Date().toISOString() })
@@ -86,12 +100,13 @@ export async function POST(request: Request) {
     .orderBy(desc(discoveryCandidates.relevance), desc(discoveryCandidates.id))
     .limit(5);
 
-  const existingSources = await db.select({ url: sources.url, title: sources.title }).from(sources);
+  const existingSources = await db.select({ url: sources.url, title: sources.title, content: sources.content }).from(sources);
   const existingUrls = new Set(existingSources
     .map((item) => item.url)
-    .filter((url): url is string => Boolean(url)));
+    .filter((url): url is string => Boolean(url))
+    .map(canonicalUrl));
   const prepared = await Promise.all(highConfidence.map(async (candidate) => {
-    if (existingUrls.has(candidate.url)) return { candidate, content: "", exists: true, duplicate: false };
+    if (existingUrls.has(canonicalUrl(candidate.url))) return { candidate, content: "", exists: true, duplicate: false };
     if (existingSources.some((source) => similarTitle(source.title, candidate.title))) {
       return { candidate, content: "", exists: false, duplicate: true };
     }
@@ -110,7 +125,7 @@ export async function POST(request: Request) {
           .where(eq(discoveryCandidates.id, candidate.id));
         continue;
       }
-      if (duplicate || knownTitles.some((title) => similarTitle(title, candidate.title))) {
+      if (duplicate || knownTitles.some((title) => similarTitle(title, candidate.title)) || existingSources.some((source) => similarContent(source.content, content))) {
         await db.update(discoveryCandidates).set({ status: "dismissed" })
           .where(eq(discoveryCandidates.id, candidate.id));
         continue;

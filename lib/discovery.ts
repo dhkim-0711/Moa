@@ -124,6 +124,34 @@ export function similarTitle(left: string, right: string) {
   return intersection / union >= 0.65;
 }
 
+export function canonicalUrl(value: string) {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(utm_|fbclid$|gclid$|ref$|source$)/i.test(key)) url.searchParams.delete(key);
+    }
+    url.hostname = url.hostname.replace(/^www\./, "").toLowerCase();
+    url.pathname = url.pathname.replace(/\/$/, "") || "/";
+    return url.toString();
+  } catch {
+    return value.trim();
+  }
+}
+
+export function similarContent(left: string | null | undefined, right: string | null | undefined) {
+  const tokens = (value: string) => new Set(value.toLocaleLowerCase("ko")
+    .replace(/[^0-9a-z가-힣]+/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 2)
+    .slice(0, 600));
+  const a = tokens((left || "").slice(0, 12_000));
+  const b = tokens((right || "").slice(0, 12_000));
+  if (a.size < 20 || b.size < 20) return false;
+  const intersection = [...a].filter((word) => b.has(word)).length;
+  return intersection / Math.min(a.size, b.size) >= 0.72;
+}
+
 export function readableText(html: string) {
   return decode(html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
