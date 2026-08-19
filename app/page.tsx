@@ -16,7 +16,7 @@ type Source = {
 type DiscoveryTopic = { id: number; query: string; lastRunAt?: string | null };
 type DiscoveryCandidate = { id: number; query: string; title: string; url: string; summary?: string | null; host?: string | null; relevance: number; publishedAt?: string | null };
 type WeeklyDiscovery = { discovered: number; saved: number; dismissed: number; topTopic?: string | null };
-type ReportEvidence = { id: number; title: string; url?: string | null; origin: "MOA" | "DAILY_DESK"; createdAt: string };
+type ReportEvidence = { id: number; title: string; url?: string | null; origin: "MOA" | "DAILY_DESK" | "WEB_RESEARCH"; createdAt: string; publisher: string };
 type ReportItem = { id: string; headline: string; summary: string; introduction: string; body: string; implications: string; metrics: string[]; companies: string[]; technologies: string[]; sources: ReportEvidence[] };
 type TrendReport = {
   period: "week" | "month";
@@ -24,12 +24,12 @@ type TrendReport = {
   generatedAt: string;
   overview: string;
   overviewBullets: string[];
-  sectionSummaries: { technology: string; market: string; company: string };
+  sectionSummaries: { technology: string; market: string; company: string; policy: string };
   total: number;
   uniqueTotal: number;
   issueCount: number;
   allMetrics: string[];
-  sections: { technology: ReportItem[]; market: ReportItem[]; company: ReportItem[] };
+  sections: { technology: ReportItem[]; market: ReportItem[]; company: ReportItem[]; policy: ReportItem[] };
   markdown: string;
 };
 type UnifiedSearchResult = {
@@ -552,10 +552,10 @@ export default function Home() {
           {reportMessage && <div className="discovery-message">{reportMessage}</div>}
           {reportLoading && !trendReport ? <div className="report-loading">자동수집 자료를 읽고 보고서를 작성하고 있습니다…</div> : trendReport && <article className="trend-report">
             <div className="report-cover"><span className="eyebrow">MOA ISSUE INTELLIGENCE</span><h2>AI·NPU {trendReport.periodLabel}<br/>이슈 중심 종합 보고서</h2><p>{new Date(trendReport.generatedAt).toLocaleString("ko-KR")} 기준 · 원자료 {trendReport.total}건 → 중복 제거 {trendReport.uniqueTotal}건 → 통합 이슈 {trendReport.issueCount}개</p></div>
-            <section className="report-summary"><div className="report-heading-number">01</div><div><h3>종합 요약</h3><p>{trendReport.overview}</p><ul>{trendReport.overviewBullets.map((item) => <li key={item}>{item}</li>)}</ul>{trendReport.allMetrics.length > 0 && <div className="summary-metrics">{trendReport.allMetrics.map((metric) => <span key={metric}>{metric}</span>)}</div>}</div></section>
-            {(["technology", "market", "company"] as const).map((category) => {
-              const label = category === "technology" ? "기술 동향" : category === "market" ? "시장 동향" : "기업 동향";
-              const number = category === "technology" ? "02" : category === "market" ? "03" : "04";
+            <section className="report-summary"><div className="report-heading-number">■</div><div><h3>전체 내용 요약 · {trendReport.generatedAt.slice(0, 10).replaceAll("-", ".")}</h3><p>{trendReport.overview}</p><ul>{trendReport.overviewBullets.map((item) => <li key={item}>{item}</li>)}</ul>{trendReport.allMetrics.length > 0 && <div className="summary-metrics">{trendReport.allMetrics.map((metric) => <span key={metric}>{metric}</span>)}</div>}</div></section>
+            {(["market", "company", "policy", "technology"] as const).map((category) => {
+              const label = category === "technology" ? "기술 발전동향" : category === "market" ? "글로벌 시장동향" : category === "policy" ? "정책·규제동향" : "주요 기업동향";
+              const number = category === "market" ? "01" : category === "company" ? "02" : category === "policy" ? "03" : "04";
               const items = trendReport.sections[category];
               return <section className="report-section" key={category}><div className="report-section-title"><div className="report-heading-number">{number}</div><div><h3>{label}</h3><p>{trendReport.sectionSummaries[category]}</p></div><span>{items.length}개 이슈</span></div>{items.length ? items.map((item) => <article className="report-issue" key={item.id}><div className="issue-kicker">ISSUE {item.sources.length > 1 ? `· ${item.sources.length}개 출처 통합` : "· 단일 출처"}</div><h4>{item.headline}</h4><div className="issue-chapter issue-summary"><strong>요약</strong><p>{item.summary}</p></div><div className="issue-chapter"><strong>서론</strong><p>{item.introduction}</p></div><div className="issue-chapter"><strong>본론</strong><p>{item.body}</p></div><div className="issue-implication"><strong>시사점</strong><p>{item.implications}</p></div>{(item.companies.length > 0 || item.technologies.length > 0) && <div className="issue-links">{item.companies.map((name) => <span className="company" key={`c-${name}`}>{name}</span>)}{item.technologies.map((name) => <span className="technology" key={`t-${name}`}>{name}</span>)}</div>}{item.metrics.length > 0 && <div className="item-metrics"><strong>수치 비교</strong>{item.metrics.map((metric) => <span key={metric}>{metric}</span>)}</div>}<details className="issue-sources"><summary>근거 출처 {item.sources.length}건 보기</summary><ul>{item.sources.map((source) => <li key={`${source.origin}-${source.id}`}><a href={source.url || `/source/${source.id}`} target="_blank" rel="noreferrer">{source.title}</a><span>{source.origin === "MOA" ? "모아" : "Daily Desk"}</span></li>)}</ul></details></article>) : <p className="report-empty">해당 기간에 분류된 자료가 없습니다.</p>}</section>;
             })}

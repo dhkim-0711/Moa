@@ -4,6 +4,7 @@ import { sources } from "../../../../db/schema";
 import { requireAuthorized } from "../../../../lib/auth";
 import { buildTrendReport } from "../../../../lib/trend-report";
 import { searchDailyDesk } from "../../../../lib/daily-desk";
+import { collectReportResearch } from "../../../../lib/report-research";
 
 export async function GET(request: Request) {
   const denied = await requireAuthorized(request);
@@ -15,8 +16,12 @@ export async function GET(request: Request) {
     .where(and(eq(sources.kind, "AUTO_WEB"), gte(sources.createdAt, cutoff)))
     .orderBy(desc(sources.createdAt)).limit(100);
   let dailyRows: Awaited<ReturnType<typeof searchDailyDesk>> = [];
+  let researchRows: Awaited<ReturnType<typeof collectReportResearch>> = [];
   try {
-    dailyRows = (await searchDailyDesk("", 180)).filter((item) => !item.publishedAt || new Date(item.publishedAt).toISOString() >= cutoff);
+    [dailyRows, researchRows] = await Promise.all([
+      searchDailyDesk("", 180).then((items) => items.filter((item) => !item.publishedAt || new Date(item.publishedAt).toISOString() >= cutoff)),
+      collectReportResearch(),
+    ]);
   } catch {}
   const knownUrls = new Set(localRows.map((item) => item.url).filter(Boolean));
   const rows = [
@@ -30,6 +35,11 @@ export async function GET(request: Request) {
       createdAt: item.publishedAt || new Date().toISOString(),
       origin: "DAILY_DESK" as const,
     })),
-  ].slice(0, 100);
+    ...researchRows.map((item, index) => ({
+      id: -200_000 - index, title: item.title, url: item.url, excerpt: item.summary,
+      content: item.summary, createdAt: item.publishedAt || new Date().toISOString(),
+      origin: "WEB_RESEARCH" as const, categoryHint: item.category,
+    })),
+  ].slice(0, 180);
   return Response.json({ report: buildTrendReport(rows, period) });
 }
