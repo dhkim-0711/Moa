@@ -2,7 +2,7 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { blockedHosts, discoveryCandidates, discoveryTopics, sources } from "../../../../db/schema";
 import { requireAuthorized } from "../../../../lib/auth";
-import { canonicalUrl, deriveInterestProfile, fetchReadablePage, INSTITUTIONAL_REPORT_QUERIES, isInstitutionalReport, relevanceScore, searchWeb, similarContent, similarTitle } from "../../../../lib/discovery";
+import { canonicalUrl, deriveInterestProfile, fetchReadablePage, hostMatches, INSTITUTIONAL_REPORT_QUERIES, isInstitutionalReport, isRelevantDiscoveryResult, relevanceScore, searchWeb, similarContent, similarTitle } from "../../../../lib/discovery";
 import { collectDailyDeskCandidates } from "../../../../lib/daily-desk";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -27,15 +27,15 @@ export async function POST(request: Request) {
   const topics = await db.select().from(discoveryTopics).where(eq(discoveryTopics.active, true));
   const blocked = new Set((await db.select().from(blockedHosts)).map((item) => item.host));
 
-  const plans = new Map<string, { query: string; topicId: number | null; topicRowId?: number }>();
+  const plans = new Map<string, { query: string; topicId: number | null; topicRowId?: number; allowedHosts?: readonly string[] }>();
   for (const topic of topics) {
     if (topic.origin === "automatic" && /(정책|지원사업|실증 사업|실증사업|정부|보도자료)/i.test(topic.query)) continue;
     if (force || !topic.lastRunAt || new Date(topic.lastRunAt).getTime() < cutoffDate.getTime()) {
       plans.set(topic.query, { query: topic.query, topicId: topic.id, topicRowId: topic.id });
     }
   }
-  for (const query of INSTITUTIONAL_REPORT_QUERIES) {
-    plans.set(query, { query, topicId: null });
+  for (const reportPlan of INSTITUTIONAL_REPORT_QUERIES) {
+    plans.set(reportPlan.query, { query: reportPlan.query, topicId: null, allowedHosts: reportPlan.hosts });
   }
   let added = 0;
   const errors: string[] = [];
@@ -53,9 +53,11 @@ export async function POST(request: Request) {
         let host = "";
         try { host = new URL(result.url).hostname.replace(/^www\./, ""); } catch { continue; }
         if (blocked.has(host)) continue;
+        if (plan.allowedHosts && !hostMatches(host, plan.allowedHosts)) continue;
+        if (!isRelevantDiscoveryResult(plan.query, result.title, result.summary)) continue;
         const normalizedUrl = canonicalUrl(result.url);
         if (knownCandidateUrls.has(normalizedUrl) || knownCandidateTitles.some((title) => similarTitle(title, result.title))) continue;
-        const institutionalReport = isInstitutionalReport(result.title, result.summary, result.url);
+        const institutionalReport = Boolean(plan.allowedHosts) && isInstitutionalReport(result.title, result.summary, result.url);
         const calculatedScore = relevanceScore(plan.query, result.title, result.summary, profile.terms);
         const score = institutionalReport ? Math.max(calculatedScore, /\.pdf(?:$|[?#])/i.test(result.url) ? 92 : 84) : calculatedScore;
         const inserted = await db.insert(discoveryCandidates).values({

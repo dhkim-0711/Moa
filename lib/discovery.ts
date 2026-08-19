@@ -32,15 +32,17 @@ const POLICY_TERMS = ["보도자료", "정책", "지원사업", "지원 사업",
 const REPORT_TERMS = ["이슈리포트", "이슈 리포트", "연구보고서", "산업동향", "백서", "전망 보고서", "white paper", "research report", "market report", "outlook"];
 const RESEARCH_HOSTS = ["oecd.org", "wipo.int", "worldbank.org", "imf.org", "stanford.edu", "kdi.re.kr", "kisdi.re.kr", "kistep.re.kr", "iitp.kr", "spri.kr", "kiet.re.kr", "kotra.or.kr", "etri.re.kr"];
 export const INSTITUTIONAL_REPORT_QUERIES = [
-  "site:spri.kr AI 반도체 이슈리포트",
-  "site:iitp.kr AI 반도체 주간기술동향 보고서",
-  "site:kisdi.re.kr OR site:kiet.re.kr 인공지능 반도체 산업 연구보고서",
-  "site:kistep.re.kr OR site:etri.re.kr AI 반도체 기술동향 PDF",
-  "site:kotra.or.kr AI 반도체 해외시장 보고서",
-  "site:oecd.org OR site:wipo.int artificial intelligence semiconductor report PDF",
-  "site:hai.stanford.edu AI Index report hardware industry",
-  "AI accelerator market outlook research report filetype:pdf 2026",
-];
+  { query: "site:spri.kr AI 반도체 보고서", hosts: ["spri.kr"] },
+  { query: "site:iitp.kr AI 반도체 주간기술동향", hosts: ["iitp.kr"] },
+  { query: "site:kisdi.re.kr AI 반도체 연구보고서", hosts: ["kisdi.re.kr"] },
+  { query: "site:kiet.re.kr AI 반도체 산업 보고서", hosts: ["kiet.re.kr"] },
+  { query: "site:kistep.re.kr AI 반도체 기술동향 보고서", hosts: ["kistep.re.kr"] },
+  { query: "site:etri.re.kr AI 반도체 기술 보고서", hosts: ["etri.re.kr"] },
+  { query: "site:kotra.or.kr AI 반도체 해외시장 보고서", hosts: ["kotra.or.kr"] },
+  { query: "site:oecd.org artificial intelligence semiconductor report", hosts: ["oecd.org"] },
+  { query: "site:wipo.int artificial intelligence semiconductor report", hosts: ["wipo.int"] },
+  { query: "site:hai.stanford.edu AI Index report hardware industry", hosts: ["hai.stanford.edu"] },
+] as const;
 const COMPANY_TERMS = [
   "mangoboost", "망고부스트", "퓨리오사ai", "리벨리온", "딥엑스", "사피온",
   "엔비디아", "nvidia", "amd", "인텔", "intel", "삼성전자", "sk하이닉스",
@@ -135,6 +137,23 @@ export function isInstitutionalReport(title: string, summary: string, url: strin
   const combined = `${title} ${summary}`.toLocaleLowerCase("ko");
   let host = ""; try { host = new URL(url).hostname.replace(/^www\./, ""); } catch {}
   return REPORT_TERMS.some((term) => combined.includes(term)) || /\.pdf(?:$|[?#])/i.test(url) || RESEARCH_HOSTS.some((domain) => host === domain || host.endsWith(`.${domain}`));
+}
+
+export function hostMatches(host: string, allowedHosts: readonly string[]) {
+  const normalized = host.replace(/^www\./, "").toLowerCase();
+  return allowedHosts.some((domain) => normalized === domain || normalized.endsWith(`.${domain}`));
+}
+
+export function isRelevantDiscoveryResult(query: string, title: string, summary: string) {
+  const text = `${query} ${title} ${summary}`.toLocaleLowerCase("ko");
+  const hasAiContext = ["ai", "인공지능", "반도체", "semiconductor", "accelerator", "gpu", "npu", "hbm", "llm", "데이터센터"]
+    .some((term) => text.includes(term));
+  const resultText = `${title} ${summary}`.toLocaleLowerCase("ko");
+  const resultHasAiContext = ["ai", "인공지능", "반도체", "semiconductor", "accelerator", "gpu", "npu", "hbm", "llm", "데이터센터"]
+    .some((term) => resultText.includes(term));
+  const obviousNoise = ["dictionary", "wikipedia", "imdb", "calculator", "sign in", "login", "webtoon", "boots", "porn", "adult"]
+    .some((term) => resultText.includes(term));
+  return !obviousNoise && (!hasAiContext || resultHasAiContext);
 }
 
 export function similarTitle(left: string, right: string) {
