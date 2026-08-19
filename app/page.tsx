@@ -240,7 +240,8 @@ export default function Home() {
 
   async function openTrendReport() {
     setView("report");
-    await loadTrendReport(reportPeriod);
+    setTrendReport(null);
+    setReportMessage("");
   }
 
   async function changeReportPeriod(period: "week" | "month") {
@@ -517,7 +518,7 @@ export default function Home() {
         <div className="sidebar-foot"><span className="avatar">나</span><div><strong>나의 지식 공간</strong><small>개인 전용</small></div><button onClick={logout} aria-label="로그아웃">나가기</button></div>
       </aside>
 
-      <section className="workspace">
+      <section className={`workspace ${view === "report" ? "report-empty-view" : ""}`}>
         <header><div><h1>{view === "library" ? "내 자료함" : view === "discovery" ? "자동 수집함" : "동향 보고서"}</h1><p>{view === "library" ? "ChatGPT가 활용할 PDF, 워드, 엑셀, PPT, HWPX와 메모를 저장하고 관리하세요." : view === "discovery" ? "관심 주제를 바탕으로 무료 웹 검색에서 새로운 자료 후보를 모읍니다." : "자동수집 자료를 기술·시장·기업별로 정리한 근거 중심 보고서입니다."}</p></div><button className="help" onClick={() => setModal("help")} aria-label="사용 방법">?</button></header>
 
         {view === "library" ? <>
