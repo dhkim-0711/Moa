@@ -21,6 +21,13 @@ function titleFromFilename(filename: string, period: "week" | "month") {
   return `${stem} ${period === "week" ? "주간" : "월간"} 동향보고서`;
 }
 
+function sanitizeReportContent(content: string) {
+  return content
+    .replace(/\r\n/g, "\n")
+    .replace(/\n(?:\/\/\s*\n)?#{1,6}\s*작성\s*기준\s*및\s*유의사항\b[\s\S]*$/i, "")
+    .trimEnd();
+}
+
 export async function GET(request: NextRequest) {
   const periodParam = request.nextUrl.searchParams.get("period");
   if (!validPeriod(periodParam)) {
@@ -37,7 +44,7 @@ export async function GET(request: NextRequest) {
     const rawUrl = `https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}/${directory}/${encodeURIComponent(filename)}`;
     const response = await fetch(rawUrl, { headers: { "user-agent": "moa-report-archive" }, cache: "no-store" });
     if (!response.ok) return NextResponse.json({ error: "보고서를 찾지 못했습니다." }, { status: response.status });
-    const content = await response.text();
+    const content = sanitizeReportContent(await response.text());
     const title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() || titleFromFilename(filename, periodParam);
     return NextResponse.json({ report: { id: `${periodParam}:${filename}`, period: periodParam, periodLabel: periodParam === "week" ? "주간" : "월간", title, publishedAt: filename.match(/\d{4}-\d{2}(?:-\d{2})?/)?.[0] || "", filename, content } });
   }

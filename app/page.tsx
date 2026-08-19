@@ -57,6 +57,12 @@ function reportTitle(filename: string, period: "week" | "month") {
   const stem = filename.replace(/\.md$/i, "").replace(/[-_]/g, " ");
   return `${stem} ${period === "week" ? "주간" : "월간"} 동향보고서`;
 }
+function sanitizeReportContent(content: string) {
+  return content
+    .replace(/\r\n/g, "\n")
+    .replace(/\n(?:\/\/\s*\n)?#{1,6}\s*작성\s*기준\s*및\s*유의사항\b[\s\S]*$/i, "")
+    .trimEnd();
+}
 type UnifiedSearchResult = {
   id: string;
   sourceId?: number;
@@ -138,7 +144,7 @@ function markdownInline(text: string, keyPrefix: string): ReactNode[] {
 }
 
 function MarkdownDocument({ content }: { content: string }) {
-  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const lines = sanitizeReportContent(content).split("\n");
   const nodes: ReactNode[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
@@ -317,7 +323,7 @@ export default function Home() {
       const directory = reportDirectory(report.period);
       const response = await fetch(`https://raw.githubusercontent.com/${REPORT_REPOSITORY}/${REPORT_BRANCH}/${directory}/${encodeURIComponent(report.filename)}`, { cache: "no-store" });
       if (!response.ok) throw new Error("report fetch failed");
-      const content = await response.text();
+      const content = sanitizeReportContent(await response.text());
       const title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() || report.title;
       setSelectedArchive({ ...report, title, content });
       setReportMessage("");
