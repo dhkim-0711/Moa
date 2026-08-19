@@ -346,12 +346,3 @@
 28. [Backend.AI — AI Infrastructure OS(Lablup, 2026.08.19 조회)](https://www.backend.ai/)
 29. [About MangoBoost — Agentic AI Full-Stack Infrastructure(MangoBoost, 2026.08.19 조회)](https://www.mangoboost.io/company/about)
 30. [MangoBoost Case Studies — GENIES(MangoBoost, 2026.08.19 조회)](https://mangoboost.io/solutions/case-study)
-
-//
-
-## 작성 기준 및 유의사항
-
-- 시장동향은 최근 6개월, 기업동향은 최근 3개월, 정책·규제와 기술동향은 최근 1개월 자료를 우선 적용했다. 정부 예산·국제원칙·이기종 집합통신은 현재 정책·기술의 기준선 확인을 위해 예외적으로 이전 자료를 병기했다.
-- 기업 발표의 성능·비용 수치는 ‘공급사 또는 고객 사례’로 구분했으며, 독립 재현 전에는 일반화하지 않았다.
-- 벤치마크 비교 시 모델뿐 아니라 프롬프트, 하네스, 샘플링, 토큰 예산, 동시성, 하드웨어, 전력, 가격 조건을 함께 확인해야 한다.
-- 본 보고서는 공개자료와 2026년 8월 모아 수집자료를 통합한 시장·정책 분석 초안이며 투자·법률 자문을 대체하지 않는다.
