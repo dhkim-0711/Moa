@@ -1,4 +1,4 @@
-import { canonicalUrl, searchWeb, similarTitle } from "./discovery";
+import { canonicalUrl, isInstitutionalReport, searchWeb, similarTitle } from "./discovery";
 
 export type ResearchCategory = "technology" | "market" | "company" | "policy";
 
@@ -21,6 +21,17 @@ const SEARCH_PLAN: Array<{ category: ResearchCategory; months: number; queries: 
     "GPU NPU AI accelerator performance efficiency TOPS latest release",
   ] },
   { category: "market", months: 6, queries: ["AI investment funding data center capacity demand latest"] },
+  { category: "market", months: 6, queries: [
+    "site:oecd.org OR site:wipo.int OR site:worldbank.org artificial intelligence industry report 2026",
+    "AI semiconductor accelerator market research report outlook filetype:pdf 2026",
+  ] },
+  { category: "technology", months: 6, queries: [
+    "site:stanford.edu AI Index report hardware models benchmark 2026",
+    "site:iitp.kr OR site:spri.kr OR site:etri.re.kr AI 반도체 이슈리포트 기술동향",
+  ] },
+  { category: "policy", months: 6, queries: [
+    "site:kdi.re.kr OR site:kisdi.re.kr OR site:kistep.re.kr OR site:kiet.re.kr AI 산업 정책 연구보고서",
+  ] },
 ];
 
 export async function collectReportResearch() {
@@ -34,7 +45,7 @@ export async function collectReportResearch() {
       }).map((item) => ({ ...item, category: plan.category }));
     } catch { return []; }
   }));
-  const rows = (await Promise.all(tasks)).flat();
+  const rows = (await Promise.all(tasks)).flat().sort((a, b) => Number(isInstitutionalReport(b.title, b.summary, b.url)) - Number(isInstitutionalReport(a.title, a.summary, a.url)));
   const unique: typeof rows = [];
   const urls = new Set<string>();
   for (const row of rows) {

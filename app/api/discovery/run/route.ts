@@ -2,7 +2,7 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { blockedHosts, discoveryCandidates, discoveryTopics, sources } from "../../../../db/schema";
 import { requireAuthorized } from "../../../../lib/auth";
-import { canonicalUrl, deriveInterestProfile, fetchReadablePage, relevanceScore, searchWeb, similarContent, similarTitle } from "../../../../lib/discovery";
+import { canonicalUrl, deriveInterestProfile, fetchReadablePage, isInstitutionalReport, relevanceScore, searchWeb, similarContent, similarTitle } from "../../../../lib/discovery";
 import { collectDailyDeskCandidates } from "../../../../lib/daily-desk";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -131,13 +131,15 @@ export async function POST(request: Request) {
           .where(eq(discoveryCandidates.id, candidate.id));
         continue;
       }
-      if (content.length < 500) continue;
+      const institutionalReport = isInstitutionalReport(candidate.title, candidate.summary || "", candidate.url);
+      const reportContent = content.length >= 500 ? content : institutionalReport ? `${candidate.title}\n\n${candidate.summary || "기관 발행 보고서 원문 링크"}` : "";
+      if (!reportContent || (!institutionalReport && reportContent.length < 500)) continue;
       await db.insert(sources).values({
         title: candidate.title,
         kind: "AUTO_WEB",
         url: candidate.url,
         excerpt: (candidate.summary || content).slice(0, 180),
-        content,
+        content: reportContent,
         status: "ready",
       });
       knownTitles.push(candidate.title);

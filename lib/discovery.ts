@@ -20,6 +20,8 @@ const BASE_INTEREST_QUERIES = [
   "global AI accelerator NPU market adoption company deployment",
   "AI chip startup funding partnership product launch",
   "HBM AI accelerator supply demand price capacity",
+  "AI 반도체 NPU 이슈리포트 산업동향 보고서 filetype:pdf",
+  "AI accelerator market technology white paper report filetype:pdf",
 ];
 
 const TITLE_ANCHORS = ["npu", "ai 반도체", "ai semiconductor", "ai 가속기", "ai accelerator"];
@@ -27,6 +29,8 @@ const MARKET_TERMS = ["시장규모", "시장 규모", "점유율", "매출", "�
 const TECH_TERMS = ["tops", "tops/w", "전력효율", "전력 효율", "추론 성능", "hbm", "칩렛", "cxl", "공정", "benchmark", "architecture", "inference"];
 const COMPANY_EVENTS = ["수주", "양산", "투자유치", "투자 유치", "공급계약", "공급 계약", "협력", "인수", "도입", "채택", "출시", "deployment", "adoption", "partnership", "launch"];
 const POLICY_TERMS = ["보도자료", "정책", "지원사업", "지원 사업", "공고", "협약식", "간담회", "장관", "정부", "부처", "실증사업", "실증 사업"];
+const REPORT_TERMS = ["이슈리포트", "이슈 리포트", "연구보고서", "산업동향", "백서", "전망 보고서", "white paper", "research report", "market report", "outlook"];
+const RESEARCH_HOSTS = ["oecd.org", "wipo.int", "worldbank.org", "imf.org", "stanford.edu", "kdi.re.kr", "kisdi.re.kr", "kistep.re.kr", "iitp.kr", "spri.kr", "kiet.re.kr", "kotra.or.kr", "etri.re.kr"];
 const COMPANY_TERMS = [
   "mangoboost", "망고부스트", "퓨리오사ai", "리벨리온", "딥엑스", "사피온",
   "엔비디아", "nvidia", "amd", "인텔", "intel", "삼성전자", "sk하이닉스",
@@ -105,14 +109,22 @@ export function relevanceScore(query: string, title: string, summary: string, in
   const companyEvidence = COMPANY_TERMS.some((term) => combined.includes(term))
     && COMPANY_EVENTS.some((term) => combined.includes(term));
   const policyHits = POLICY_TERMS.filter((term) => combined.includes(term)).length;
+  const reportEvidence = REPORT_TERMS.some((term) => combined.includes(term));
   const specificEvidence = marketEvidence || techEvidence || companyEvidence;
   const baseScore = Math.min(89, 45 + titleMatches * 10 + summaryMatches * 4 + Math.min(10, interestMatches * 2));
   if (policyHits && !techEvidence && !marketEvidence && !companyEvidence) return Math.min(69, baseScore - policyHits * 8);
   if (policyHits >= 2 && !marketEvidence && !techEvidence) return Math.min(79, baseScore - 10);
+  if (reportEvidence && (hasTitleAnchor || TITLE_ANCHORS.some((term) => combined.includes(term)))) return Math.max(90, Math.min(97, baseScore + 8));
   if (!hasTitleAnchor || !specificEvidence) return baseScore;
   const evidenceCount = [marketEvidence, techEvidence, companyEvidence].filter(Boolean).length;
   const titleInterestMatches = interestTerms.filter((term) => normalizedTitle.includes(term.toLocaleLowerCase("ko"))).length;
   return Math.min(99, 90 + Math.min(6, evidenceCount * 2 + titleInterestMatches) - Math.min(6, policyHits * 3));
+}
+
+export function isInstitutionalReport(title: string, summary: string, url: string) {
+  const combined = `${title} ${summary}`.toLocaleLowerCase("ko");
+  let host = ""; try { host = new URL(url).hostname.replace(/^www\./, ""); } catch {}
+  return REPORT_TERMS.some((term) => combined.includes(term)) || /\.pdf(?:$|[?#])/i.test(url) || RESEARCH_HOSTS.some((domain) => host === domain || host.endsWith(`.${domain}`));
 }
 
 export function similarTitle(left: string, right: string) {
