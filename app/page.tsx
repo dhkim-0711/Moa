@@ -18,6 +18,7 @@ type DiscoveryCandidate = { id: number; query: string; title: string; url: strin
 type WeeklyDiscovery = { discovered: number; saved: number; dismissed: number; topTopic?: string | null };
 type ReportEvidence = { id: number; title: string; url?: string | null; origin: "MOA" | "DAILY_DESK" | "WEB_RESEARCH"; createdAt: string; publisher: string };
 type ReportItem = { id: string; headline: string; summary: string; introduction: string; body: string; implications: string; metrics: string[]; companies: string[]; technologies: string[]; sources: ReportEvidence[] };
+type ReportChapter = { number: number; title: string; lead: string; sections: Array<{ title: string; claim: string; analysis: string; implications: string; metrics: string[]; sources: ReportEvidence[] }> };
 type TrendReport = {
   period: "week" | "month";
   periodLabel: string;
@@ -30,6 +31,9 @@ type TrendReport = {
   issueCount: number;
   allMetrics: string[];
   sections: { technology: ReportItem[]; market: ReportItem[]; company: ReportItem[]; policy: ReportItem[] };
+  chapters: ReportChapter[];
+  caveats: string[];
+  monitoring: string[];
   markdown: string;
 };
 type UnifiedSearchResult = {
@@ -553,12 +557,8 @@ export default function Home() {
           {reportLoading && !trendReport ? <div className="report-loading">자동수집 자료를 읽고 보고서를 작성하고 있습니다…</div> : trendReport && <article className="trend-report">
             <div className="report-cover"><span className="eyebrow">MOA ISSUE INTELLIGENCE</span><h2>AI·NPU {trendReport.periodLabel}<br/>이슈 중심 종합 보고서</h2><p>{new Date(trendReport.generatedAt).toLocaleString("ko-KR")} 기준 · 원자료 {trendReport.total}건 → 중복 제거 {trendReport.uniqueTotal}건 → 통합 이슈 {trendReport.issueCount}개</p></div>
             <section className="report-summary"><div className="report-heading-number">■</div><div><h3>전체 내용 요약 · {trendReport.generatedAt.slice(0, 10).replaceAll("-", ".")}</h3><p>{trendReport.overview}</p><ul>{trendReport.overviewBullets.map((item) => <li key={item}>{item}</li>)}</ul>{trendReport.allMetrics.length > 0 && <div className="summary-metrics">{trendReport.allMetrics.map((metric) => <span key={metric}>{metric}</span>)}</div>}</div></section>
-            {(["market", "company", "policy", "technology"] as const).map((category) => {
-              const label = category === "technology" ? "기술 발전동향" : category === "market" ? "글로벌 시장동향" : category === "policy" ? "정책·규제동향" : "주요 기업동향";
-              const number = category === "market" ? "01" : category === "company" ? "02" : category === "policy" ? "03" : "04";
-              const items = trendReport.sections[category];
-              return <section className="report-section" key={category}><div className="report-section-title"><div className="report-heading-number">{number}</div><div><h3>{label}</h3><p>{trendReport.sectionSummaries[category]}</p></div><span>{items.length}개 이슈</span></div>{items.length ? items.map((item) => <article className="report-issue" key={item.id}><div className="issue-kicker">ISSUE {item.sources.length > 1 ? `· ${item.sources.length}개 출처 통합` : "· 단일 출처"}</div><h4>{item.headline}</h4><div className="issue-chapter issue-summary"><strong>요약</strong><p>{item.summary}</p></div><div className="issue-chapter"><strong>서론</strong><p>{item.introduction}</p></div><div className="issue-chapter"><strong>본론</strong><p>{item.body}</p></div><div className="issue-implication"><strong>시사점</strong><p>{item.implications}</p></div>{(item.companies.length > 0 || item.technologies.length > 0) && <div className="issue-links">{item.companies.map((name) => <span className="company" key={`c-${name}`}>{name}</span>)}{item.technologies.map((name) => <span className="technology" key={`t-${name}`}>{name}</span>)}</div>}{item.metrics.length > 0 && <div className="item-metrics"><strong>수치 비교</strong>{item.metrics.map((metric) => <span key={metric}>{metric}</span>)}</div>}<details className="issue-sources"><summary>근거 출처 {item.sources.length}건 보기</summary><ul>{item.sources.map((source) => <li key={`${source.origin}-${source.id}`}><a href={source.url || `/source/${source.id}`} target="_blank" rel="noreferrer">{source.title}</a><span>{source.origin === "MOA" ? "모아" : "Daily Desk"}</span></li>)}</ul></details></article>) : <p className="report-empty">해당 기간에 분류된 자료가 없습니다.</p>}</section>;
-            })}
+            {trendReport.chapters.map((chapter) => <section className="report-section report-chapter" key={chapter.number}><div className="report-section-title"><div className="report-heading-number">{String(chapter.number).padStart(2,"0")}</div><div><h3>{chapter.title}</h3><p>{chapter.lead}</p></div><span>{chapter.sections.length}개 분석축</span></div>{chapter.sections.map((section) => <article className="report-issue" key={`${chapter.number}-${section.title}`}><h4>{section.title}</h4><p className="chapter-claim">{section.claim}</p><p className="chapter-analysis">{section.analysis}</p><div className="issue-implication"><strong>Chief AI Scientist · 정책수립자 통합 시사점</strong><p>{section.implications}</p></div>{section.metrics.length > 0 && <div className="item-metrics"><strong>핵심 수치</strong>{section.metrics.map(metric=><span key={metric}>{metric}</span>)}</div>}<details className="issue-sources"><summary>근거 {section.sources.length}건</summary><ul>{section.sources.map(source=><li key={`${source.origin}-${source.id}`}><a href={source.url||`/source/${source.id}`} target="_blank" rel="noreferrer">{source.title}</a><span>{source.publisher} · {source.createdAt.slice(0,10).replaceAll("-",".")}</span></li>)}</ul></details></article>)}</section>)}
+            <section className="report-section report-appendix"><div className="report-section-title"><div className="report-heading-number">06</div><div><h3>한계 및 모니터링 지표</h3><p>전망치의 불확실성과 전략 변경 신호를 함께 관리합니다.</p></div></div><h4>한계 및 주의사항</h4><ul>{trendReport.caveats.map(item=><li key={item}>{item}</li>)}</ul><h4>후속 모니터링 지표</h4><ul>{trendReport.monitoring.map(item=><li key={item}>{item}</li>)}</ul></section>
             <footer className="report-note">동일 사건의 중복 기사는 하나의 이슈로 통합했습니다. 공통 사실·수치·기업·기술 연결을 재구성한 무비용 규칙 기반 초안이므로 중요한 판단 전에는 근거 원문을 확인하세요.</footer>
           </article>}
         </section>}
