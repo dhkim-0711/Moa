@@ -16,7 +16,8 @@ type Source = {
 type DiscoveryTopic = { id: number; query: string; lastRunAt?: string | null };
 type DiscoveryCandidate = { id: number; query: string; title: string; url: string; summary?: string | null; host?: string | null; relevance: number; publishedAt?: string | null };
 type WeeklyDiscovery = { discovered: number; saved: number; dismissed: number; topTopic?: string | null };
-type ReportItem = Source & { summary: string; metrics: string[] };
+type ReportEvidence = { id: number; title: string; url?: string | null; origin: "MOA" | "DAILY_DESK"; createdAt: string };
+type ReportItem = { id: string; headline: string; synthesis: string; implications: string; metrics: string[]; companies: string[]; technologies: string[]; sources: ReportEvidence[] };
 type TrendReport = {
   period: "week" | "month";
   periodLabel: string;
@@ -25,6 +26,8 @@ type TrendReport = {
   overviewBullets: string[];
   sectionSummaries: { technology: string; market: string; company: string };
   total: number;
+  uniqueTotal: number;
+  issueCount: number;
   allMetrics: string[];
   sections: { technology: ReportItem[]; market: ReportItem[]; company: ReportItem[] };
   markdown: string;
@@ -548,15 +551,15 @@ export default function Home() {
           </section>
           {reportMessage && <div className="discovery-message">{reportMessage}</div>}
           {reportLoading && !trendReport ? <div className="report-loading">자동수집 자료를 읽고 보고서를 작성하고 있습니다…</div> : trendReport && <article className="trend-report">
-            <div className="report-cover"><span className="eyebrow">MOA TREND BRIEF</span><h2>AI·NPU {trendReport.periodLabel}<br/>동향 보고서</h2><p>{new Date(trendReport.generatedAt).toLocaleString("ko-KR")} 기준 · 자동수집 자료 {trendReport.total}건</p></div>
+            <div className="report-cover"><span className="eyebrow">MOA ISSUE INTELLIGENCE</span><h2>AI·NPU {trendReport.periodLabel}<br/>이슈 중심 종합 보고서</h2><p>{new Date(trendReport.generatedAt).toLocaleString("ko-KR")} 기준 · 원자료 {trendReport.total}건 → 중복 제거 {trendReport.uniqueTotal}건 → 통합 이슈 {trendReport.issueCount}개</p></div>
             <section className="report-summary"><div className="report-heading-number">01</div><div><h3>종합 요약</h3><p>{trendReport.overview}</p><ul>{trendReport.overviewBullets.map((item) => <li key={item}>{item}</li>)}</ul>{trendReport.allMetrics.length > 0 && <div className="summary-metrics">{trendReport.allMetrics.map((metric) => <span key={metric}>{metric}</span>)}</div>}</div></section>
             {(["technology", "market", "company"] as const).map((category) => {
               const label = category === "technology" ? "기술 동향" : category === "market" ? "시장 동향" : "기업 동향";
               const number = category === "technology" ? "02" : category === "market" ? "03" : "04";
               const items = trendReport.sections[category];
-              return <section className="report-section" key={category}><div className="report-section-title"><div className="report-heading-number">{number}</div><div><h3>{label}</h3><p>{trendReport.sectionSummaries[category]}</p></div><span>{items.length}건</span></div>{items.length ? items.map((item) => <article key={item.id}><h4>{item.title}</h4><p>{item.summary}</p>{item.metrics.length > 0 && <div className="item-metrics">핵심 수치 · {item.metrics.join(" · ")}</div>}<a href={item.url || `/source/${item.id}`} target="_blank" rel="noreferrer">출처 원문 보기 ↗</a></article>) : <p className="report-empty">해당 기간에 분류된 자료가 없습니다.</p>}</section>;
+              return <section className="report-section" key={category}><div className="report-section-title"><div className="report-heading-number">{number}</div><div><h3>{label}</h3><p>{trendReport.sectionSummaries[category]}</p></div><span>{items.length}개 이슈</span></div>{items.length ? items.map((item) => <article className="report-issue" key={item.id}><div className="issue-kicker">ISSUE {item.sources.length > 1 ? `· ${item.sources.length}개 출처 통합` : "· 단일 출처"}</div><h4>{item.headline}</h4><p className="issue-synthesis">{item.synthesis}</p><div className="issue-implication"><strong>해석 및 연결</strong><p>{item.implications}</p></div>{(item.companies.length > 0 || item.technologies.length > 0) && <div className="issue-links">{item.companies.map((name) => <span className="company" key={`c-${name}`}>{name}</span>)}{item.technologies.map((name) => <span className="technology" key={`t-${name}`}>{name}</span>)}</div>}{item.metrics.length > 0 && <div className="item-metrics"><strong>수치 비교</strong>{item.metrics.map((metric) => <span key={metric}>{metric}</span>)}</div>}<details className="issue-sources"><summary>근거 출처 {item.sources.length}건 보기</summary><ul>{item.sources.map((source) => <li key={`${source.origin}-${source.id}`}><a href={source.url || `/source/${source.id}`} target="_blank" rel="noreferrer">{source.title}</a><span>{source.origin === "MOA" ? "모아" : "Daily Desk"}</span></li>)}</ul></details></article>) : <p className="report-empty">해당 기간에 분류된 자료가 없습니다.</p>}</section>;
             })}
-            <footer className="report-note">이 보고서는 모아 자동수집 자료와 Daily Desk 공개 자료의 문장을 추출·분류해 작성했습니다. 원문에 없는 판단이나 전망은 추가하지 않았습니다.</footer>
+            <footer className="report-note">동일 사건의 중복 기사는 하나의 이슈로 통합했습니다. 공통 사실·수치·기업·기술 연결을 재구성한 무비용 규칙 기반 초안이므로 중요한 판단 전에는 근거 원문을 확인하세요.</footer>
           </article>}
         </section>}
       </section>

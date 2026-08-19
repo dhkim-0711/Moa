@@ -1,101 +1,38 @@
-export type TrendSource = {
-  id: number;
-  title: string;
-  url: string | null;
-  excerpt: string | null;
-  content: string | null;
-  createdAt: string;
-  origin?: "MOA" | "DAILY_DESK";
-};
+export type TrendSource = { id:number; title:string; url:string|null; excerpt:string|null; content:string|null; createdAt:string; origin?:"MOA"|"DAILY_DESK" };
+export type TrendCategory = "technology"|"market"|"company";
+export type TrendEvidence = { id:number; title:string; url:string|null; origin:"MOA"|"DAILY_DESK"; createdAt:string };
+export type TrendIssue = { id:string; headline:string; synthesis:string; implications:string; metrics:string[]; companies:string[]; technologies:string[]; sources:TrendEvidence[] };
 
-export type TrendCategory = "technology" | "market" | "company";
+const LABELS:Record<TrendCategory,string>={technology:"기술 동향",market:"시장 동향",company:"기업 동향"};
+const TERMS:Record<TrendCategory,string[]>={
+ technology:["npu","ai 반도체","ai 가속기","tops","전력효율","추론","hbm","칩렛","cxl","공정","아키텍처","성능","메모리"],
+ market:["시장규모","시장 규모","점유율","매출","출하량","투자액","cagr","성장률","전망","수요","가격"],
+ company:["수주","양산","투자유치","투자 유치","공급계약","공급 계약","협력","인수","출시","계약","파트너십"]};
+const COMPANIES=["MangoBoost","망고부스트","리벨리온","퓨리오사AI","딥엑스","사피온","엔비디아","NVIDIA","AMD","인텔","Intel","삼성전자","SK하이닉스","TSMC","브로드컴","퀄컴","마이크론","구글","Amazon","AWS","Microsoft","Meta"];
+const TECHNOLOGIES=["NPU","AI 반도체","AI 가속기","GPU","HBM","HBM3E","HBM4","CXL","칩렛","첨단 패키징","추론","파운드리","2nm","3nm","5nm","TOPS","TOPS/W"];
+const STOP=new Set(["관련","대한","위한","통해","이번","최근","발표","전망","동향","시장","기업","기술","그리고","에서","으로","한다","했다","밝혔다","news"]);
+const METRIC=/(?:약\s*)?(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(?:%|조원|억원|만원|원|억\s*달러|만\s*달러|달러|usd|배|대|개|건|tops(?:\/w)?|w|nm|gb\/s|tb\/s)/gi;
+function clean(v:string){return v.replace(/\s+/g," ").trim()}
+function textOf(s:TrendSource){return `${s.title} ${s.excerpt||""} ${(s.content||"").slice(0,30000)}`}
+function sentences(v:string){return clean(v).split(/(?<=[.!?。]|다\.)\s+/).map(clean).filter(s=>s.length>=28&&s.length<=360)}
+function tokens(v:string){return new Set(v.toLocaleLowerCase("ko").replace(/[^0-9a-z가-힣]+/g," ").split(/\s+/).filter(w=>w.length>1&&!STOP.has(w)))}
+function overlap(a:Set<string>,b:Set<string>){if(!a.size||!b.size)return 0;return [...a].filter(w=>b.has(w)).length/Math.min(a.size,b.size)}
+function matches(list:string[],v:string){const lower=v.toLocaleLowerCase("ko");return [...new Set(list.filter(x=>lower.includes(x.toLocaleLowerCase("ko"))))]}
+function classify(s:TrendSource):TrendCategory{const t=textOf(s).toLowerCase();return (Object.keys(TERMS) as TrendCategory[]).map(category=>({category,score:TERMS[category].reduce((n,x)=>n+(t.includes(x)?1:0),0)})).sort((a,b)=>b.score-a.score||(a.category==="company"?-1:1))[0].category}
+function getMetrics(s:TrendSource){return [...new Set(textOf(s).match(METRIC)||[])].slice(0,10)}
+function uniqueRows(rows:TrendSource[]){const kept:TrendSource[]=[];for(const row of rows){const duplicate=kept.some(item=>(row.url&&item.url&&row.url.replace(/[?#].*$/,"")===item.url.replace(/[?#].*$/, ""))||overlap(tokens(row.title),tokens(item.title))>=.72);if(!duplicate)kept.push(row)}return kept}
+function related(group:TrendSource[],row:TrendSource){const candidate=textOf(row), companies=new Set(matches(COMPANIES,candidate).map(v=>v.toLowerCase())), tech=new Set(matches(TECHNOLOGIES,candidate).map(v=>v.toLowerCase()));return group.some(item=>{const score=overlap(tokens(item.title),tokens(row.title)), itemCompanies=new Set(matches(COMPANIES,textOf(item)).map(v=>v.toLowerCase())), itemTech=new Set(matches(TECHNOLOGIES,textOf(item)).map(v=>v.toLowerCase()));const sharedCompany=[...companies].some(v=>itemCompanies.has(v)),sharedTech=[...tech].some(v=>itemTech.has(v));return score>=.38||(sharedCompany&&sharedTech)||(sharedCompany&&score>=.2)})}
+function facts(group:TrendSource[],category:TrendCategory){const focus=tokens(group.map(r=>r.title).join(" "));const ranked=group.flatMap(row=>sentences(row.content||row.excerpt||"").map(sentence=>({sentence,score:overlap(tokens(sentence),focus)*10+TERMS[category].filter(term=>sentence.toLowerCase().includes(term)).length+(sentence.match(METRIC)?1:0)}))).sort((a,b)=>b.score-a.score);const picked:string[]=[];for(const item of ranked){if(picked.some(v=>overlap(tokens(v),tokens(item.sentence))>=.62))continue;picked.push(item.sentence);if(picked.length===3)break}return picked}
+function issue(group:TrendSource[],category:TrendCategory,index:number):TrendIssue{const combined=group.map(textOf).join(" "),companies=matches(COMPANIES,combined).slice(0,6),technologies=matches(TECHNOLOGIES,combined).slice(0,6),metrics=[...new Set(group.flatMap(getMetrics))].slice(0,10),selected=facts(group,category),subject=[companies[0],technologies[0]].filter(Boolean).join("·")||"해당 이슈",basis=group.length>1?`${group.length}개 출처를 종합하면`:"현재 확인된 단일 출처에 따르면",synthesis=`${subject}에 관해 ${basis}, ${selected.length?selected.join(" 또한 "):group[0].excerpt||group[0].title}`,connections=[companies.length?`관련 기업은 ${companies.join("·")}`:"",technologies.length?`연결 기술은 ${technologies.join("·")}`:""].filter(Boolean).join("이며, "),implications=group.length>1?`${connections||"기업·기술 간 연결 관계가 확인됩니다"}. 여러 자료에서 반복 확인된 사실을 중심으로 묶었으며, 수치는 산정 기준과 시점이 다를 수 있어 아래 근거와 함께 비교해야 합니다.`:`${connections||"추가 연결 정보는 확인되지 않았습니다"}. 단일 출처 이슈이므로 후속 자료가 확보되기 전까지 확정적 추세로 해석하지 않습니다.`;const representative=[...group].sort((a,b)=>a.title.length-b.title.length)[0].title.replace(/\s*[-|｜]\s*[^-|｜]{2,20}$/,""),headline=companies.length&&technologies.length?`${companies[0]}의 ${technologies[0]} 관련 움직임과 파급효과`:representative;return{id:`${category}-${index}`,headline,synthesis,implications,metrics,companies,technologies,sources:group.map(r=>({id:r.id,title:r.title,url:r.url,origin:r.origin||"MOA",createdAt:r.createdAt}))}}
+function cluster(rows:TrendSource[],category:TrendCategory){const groups:TrendSource[][]=[];for(const row of rows){const target=groups.find(g=>related(g,row));if(target)target.push(row);else groups.push([row])}return groups.map((g,i)=>issue(g,category,i))}
 
-const CATEGORY_LABELS: Record<TrendCategory, string> = {
-  technology: "기술 동향",
-  market: "시장 동향",
-  company: "기업 동향",
-};
-
-const TERMS: Record<TrendCategory, string[]> = {
-  technology: ["npu", "ai 반도체", "ai 가속기", "tops", "전력효율", "전력 효율", "추론", "hbm", "칩렛", "cxl", "공정", "아키텍처", "성능"],
-  market: ["시장규모", "시장 규모", "점유율", "매출", "출하량", "투자액", "cagr", "성장률", "전망", "수요"],
-  company: ["수주", "양산", "투자유치", "투자 유치", "공급계약", "공급 계약", "협력", "인수", "출시", "계약"],
-};
-
-const METRIC_PATTERN = /(?:약\s*)?(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(?:%|조원|억원|만원|원|억\s*달러|만\s*달러|달러|usd|배|대|개|건|tops(?:\/w)?|w|nm|gb\/s|tb\/s)/gi;
-
-function clean(value: string) {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-function sentences(value: string) {
-  return clean(value).split(/(?<=[.!?。]|다\.)\s+/).map(clean).filter((sentence) => sentence.length >= 25);
-}
-
-function classify(source: TrendSource): TrendCategory {
-  const text = `${source.title} ${source.excerpt || ""} ${(source.content || "").slice(0, 20_000)}`.toLocaleLowerCase("ko");
-  const scores = (Object.keys(TERMS) as TrendCategory[]).map((category) => ({
-    category,
-    score: TERMS[category].reduce((total, term) => total + (text.includes(term) ? 1 : 0), 0),
-  }));
-  scores.sort((a, b) => b.score - a.score || (a.category === "company" ? -1 : 1));
-  return scores[0].category;
-}
-
-function summarize(source: TrendSource, category: TrendCategory) {
-  const candidates = sentences(source.content || source.excerpt || "");
-  const terms = TERMS[category];
-  const selected = candidates.find((sentence) => {
-    const normalized = sentence.toLocaleLowerCase("ko");
-    return terms.some((term) => normalized.includes(term)) && sentence.length <= 320;
-  }) || candidates.find((sentence) => sentence.length <= 320) || source.excerpt || source.title;
-  return clean(selected).slice(0, 320);
-}
-
-function metrics(source: TrendSource) {
-  const text = `${source.title} ${source.excerpt || ""} ${(source.content || "").slice(0, 30_000)}`;
-  return [...new Set(text.match(METRIC_PATTERN) || [])].slice(0, 8);
-}
-
-export function buildTrendReport(rows: TrendSource[], period: "week" | "month") {
-  const sections: Record<TrendCategory, Array<TrendSource & { summary: string; metrics: string[] }>> = {
-    technology: [], market: [], company: [],
-  };
-  for (const row of rows) {
-    const category = classify(row);
-    sections[category].push({ ...row, summary: summarize(row, category), metrics: metrics(row) });
-  }
-  const allMetrics = [...new Set(Object.values(sections).flatMap((items) => items.flatMap((item) => item.metrics)))].slice(0, 15);
-  const leading = (Object.keys(sections) as TrendCategory[]).sort((a, b) => sections[b].length - sections[a].length)[0];
-  const periodLabel = period === "week" ? "주간" : "월간";
-  const generatedAt = new Date().toISOString();
-  const overview = rows.length
-    ? `분석 기간에 모아와 Daily Desk 자료 ${rows.length}건이 확인되었습니다. 기술 동향 ${sections.technology.length}건, 시장 동향 ${sections.market.length}건, 기업 동향 ${sections.company.length}건이며, 가장 많은 비중을 차지한 영역은 ${CATEGORY_LABELS[leading]}입니다.`
-    : `분석 기간에 저장된 자동수집 자료가 없어 보고서 본문을 작성하지 않았습니다.`;
-  const overviewBullets = rows.length ? [
-    `수집 범위: 모아와 Daily Desk의 ${periodLabel} 자료 ${rows.length}건`,
-    `영역별 분포: 기술 ${sections.technology.length}건 · 시장 ${sections.market.length}건 · 기업 ${sections.company.length}건`,
-    `핵심 관찰: ${CATEGORY_LABELS[leading]} 관련 자료가 가장 많이 확인됨`,
-  ] : ["해당 기간에 분석할 자동수집 자료가 없습니다."];
-  const sectionSummaries = Object.fromEntries((Object.keys(sections) as TrendCategory[]).map((category) => [
-    category,
-    sections[category].length
-      ? `${sections[category].length}건이 확인되었습니다. 주요 내용은 ${sections[category].slice(0, 2).map((item) => item.title).join(" / ")}입니다.`
-      : "해당 기간에 확인된 자료가 없습니다.",
-  ])) as Record<TrendCategory, string>;
-  const markdownLines = [
-    `# AI·NPU ${periodLabel} 동향 보고서`, "", `작성 시각: ${generatedAt}`, "", "## 1. 종합 요약", "", overview, "", ...overviewBullets.map((item) => `- ${item}`),
-  ];
-  if (allMetrics.length) markdownLines.push("", "핵심 수치", "", ...allMetrics.map((metric) => `- ${metric}`));
-  for (const [index, category] of (Object.keys(sections) as TrendCategory[]).entries()) {
-    markdownLines.push("", `## ${index + 2}. ${CATEGORY_LABELS[category]}`, "", sectionSummaries[category], "");
-    if (!sections[category].length) markdownLines.push("- 해당 기간에 분류된 자료가 없습니다.");
-    for (const item of sections[category]) {
-      markdownLines.push(`### ${item.title}`, "", item.summary);
-      if (item.metrics.length) markdownLines.push("", `핵심 수치: ${item.metrics.join(", ")}`);
-      markdownLines.push("", `출처: ${item.url || `/source/${item.id}`}`, "");
-    }
-  }
-  markdownLines.push("", "---", "이 보고서는 모아 자동수집 자료와 Daily Desk 공개 자료의 문장을 추출·분류해 작성했습니다. 원문에 없는 판단이나 전망은 추가하지 않았습니다.");
-  return { period, periodLabel, generatedAt, overview, overviewBullets, sectionSummaries, total: rows.length, allMetrics, sections, markdown: markdownLines.join("\n") };
+export function buildTrendReport(inputRows:TrendSource[],period:"week"|"month"){
+ const rows=uniqueRows(inputRows),categorized:Record<TrendCategory,TrendSource[]>={technology:[],market:[],company:[]};rows.forEach(r=>categorized[classify(r)].push(r));
+ const sections:Record<TrendCategory,TrendIssue[]>={technology:cluster(categorized.technology,"technology"),market:cluster(categorized.market,"market"),company:cluster(categorized.company,"company")};
+ const issues=Object.values(sections).flat(),issueCount=issues.length,allMetrics=[...new Set(issues.flatMap(i=>i.metrics))].slice(0,15),allCompanies=[...new Set(issues.flatMap(i=>i.companies))].slice(0,6),allTechnologies=[...new Set(issues.flatMap(i=>i.technologies))].slice(0,6),leading=(Object.keys(sections) as TrendCategory[]).sort((a,b)=>sections[b].length-sections[a].length)[0],periodLabel=period==="week"?"주간":"월간",generatedAt=new Date().toISOString();
+ const overview=rows.length?`분석 기간의 자료 ${inputRows.length}건에서 중복 기사를 제거하고 ${rows.length}건을 선별한 뒤, 서로 연결되는 내용을 ${issueCount}개 이슈로 통합했습니다. 핵심 흐름은 ${LABELS[leading]}에 집중되어 있으며, 개별 기사보다 반복 확인된 사실과 기업·기술의 연결 관계를 중심으로 재구성했습니다.`:"분석 기간에 보고서로 구성할 자료가 없습니다.";
+ const overviewBullets=rows.length?[`통합 결과: 원자료 ${inputRows.length}건 → 중복 제거 ${rows.length}건 → 핵심 이슈 ${issueCount}개`,`이슈 분포: 기술 ${sections.technology.length}개 · 시장 ${sections.market.length}개 · 기업 ${sections.company.length}개`,allCompanies.length?`주요 기업: ${allCompanies.join(" · ")}`:"주요 기업 정보는 추가 확인 필요",allTechnologies.length?`연결 기술: ${allTechnologies.join(" · ")}`:"연결 기술 정보는 추가 확인 필요"]:["해당 기간에 분석할 자동수집 자료가 없습니다."];
+ const sectionSummaries=Object.fromEntries((Object.keys(sections) as TrendCategory[]).map(c=>[c,sections[c].length?`${categorized[c].length}건의 자료를 ${sections[c].length}개 이슈로 통합했습니다. 같은 사건을 반복 나열하지 않고 공통 사실과 차이를 함께 정리합니다.`:"해당 기간에 확인된 이슈가 없습니다."])) as Record<TrendCategory,string>;
+ const md=[`# AI·NPU ${periodLabel} 이슈 중심 종합 보고서`,"",`작성 시각: ${generatedAt}`,"","## 1. 종합 요약","",overview,"",...overviewBullets.map(x=>`- ${x}`)];if(allMetrics.length)md.push("","### 핵심 수치","",...allMetrics.map(x=>`- ${x}`));for(const [n,c] of (Object.keys(sections) as TrendCategory[]).entries()){md.push("",`## ${n+2}. ${LABELS[c]}`,"",sectionSummaries[c]);for(const i of sections[c]){md.push("",`### ${i.headline}`,"",i.synthesis,"",`**해석 및 연결:** ${i.implications}`);if(i.metrics.length)md.push("",`**비교 수치:** ${i.metrics.join(" · ")}`);md.push("",`**근거 출처 ${i.sources.length}건**`,...i.sources.map(s=>`- [${s.title}](${s.url||`/source/${s.id}`}) — ${s.origin==="MOA"?"모아":"Daily Desk"}`))}}md.push("","---","동일 사건의 중복 기사는 하나의 이슈로 통합했습니다. 자동 작성된 무비용 규칙 기반 초안이므로 중요한 판단 전에는 연결된 원문을 확인하세요.");
+ return{period,periodLabel,generatedAt,overview,overviewBullets,sectionSummaries,total:inputRows.length,uniqueTotal:rows.length,issueCount,allMetrics,sections,markdown:md.join("\n")};
 }
