@@ -246,7 +246,8 @@ export default function Home() {
 
   async function changeReportPeriod(period: "week" | "month") {
     setReportPeriod(period);
-    await loadTrendReport(period);
+    setTrendReport(null);
+    setReportMessage("");
   }
 
   async function copyReport() {
