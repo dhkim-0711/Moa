@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { desc, eq, like, or } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { sources } from "../../../db/schema";
+import { searchDailyDesk } from "../../../lib/daily-desk";
 
 type RpcRequest = { jsonrpc?: string; id?: string | number | null; method?: string; params?: { name?: string; arguments?: Record<string, unknown> } };
 
@@ -9,7 +10,7 @@ const tools = [
   {
     name: "search",
     title: "모아 자료 검색",
-    description: "사용자의 개인 자료함에서 질문과 관련된 PDF, HWPX, 웹페이지, 메모를 검색합니다. 답변이나 문서 작성 전에 근거 자료를 찾을 때 사용하세요.",
+    description: "사용자의 모아 자료함과 Daily Desk의 AI·NPU 동향 자료를 동시에 검색합니다. 답변이나 문서 작성 전에 근거 자료를 찾을 때 사용하세요.",
     inputSchema: { type: "object", properties: { query: { type: "string", description: "찾을 내용이나 질문" } }, required: ["query"], additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
   },
@@ -66,16 +67,32 @@ export async function POST(request: Request) {
     const rows = conditions.length
       ? await getDb().select().from(sources).where(or(...conditions)).orderBy(desc(sources.id)).limit(10)
       : await getDb().select().from(sources).orderBy(desc(sources.id)).limit(10);
-    const results = rows.map((item) => ({
+    const localResults = rows.map((item) => ({
       id: String(item.id),
       title: item.title,
       text: (item.content || item.excerpt || "").slice(0, 1200),
       url: item.url || `https://moa-knowledge-assistant.ehdkim71.chatgpt.site/source/${item.id}`,
+      source: "모아 자료함",
     }));
+    let dailyDesk: Awaited<ReturnType<typeof searchDailyDesk>> = [];
+    try { dailyDesk = await searchDailyDesk(query, 10); } catch {}
+    const results = [...localResults, ...dailyDesk.map((item) => ({ id: item.id, title: item.title, text: item.text, url: item.url, source: "Daily Desk" }))];
     return rpc(body.id, { content: [{ type: "text", text: JSON.stringify({ results }) }], structuredContent: { results } });
   }
   if (name === "fetch") {
-    const [item] = await getDb().select().from(sources).where(eq(sources.id, Number(args.id))).limit(1);
+    const requestedId = String(args.id || "");
+    if (requestedId.startsWith("daily-desk:")) {
+      try {
+        const dailyDesk = await searchDailyDesk("", 180);
+        const item = dailyDesk.find((result) => result.id === requestedId);
+        if (item) {
+          const document = { id: item.id, title: item.title, text: item.text, url: item.url, metadata: { type: item.kind, source: "Daily Desk", published_at: item.publishedAt } };
+          return rpc(body.id, { content: [{ type: "text", text: JSON.stringify(document) }], structuredContent: document });
+        }
+      } catch {}
+      return rpc(body.id, { content: [{ type: "text", text: "Daily Desk 자료를 찾을 수 없습니다." }], isError: true });
+    }
+    const [item] = await getDb().select().from(sources).where(eq(sources.id, Number(requestedId))).limit(1);
     if (!item) return rpc(body.id, { content: [{ type: "text", text: "자료를 찾을 수 없습니다." }], isError: true });
     const document = { id: String(item.id), title: item.title, text: item.content || item.excerpt || "", url: item.url || `https://moa-knowledge-assistant.ehdkim71.chatgpt.site/source/${item.id}`, metadata: { type: item.kind, saved_at: item.createdAt } };
     return rpc(body.id, { content: [{ type: "text", text: JSON.stringify(document) }], structuredContent: document });

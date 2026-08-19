@@ -5,6 +5,7 @@ export type TrendSource = {
   excerpt: string | null;
   content: string | null;
   createdAt: string;
+  origin?: "MOA" | "DAILY_DESK";
 };
 
 export type TrendCategory = "technology" | "market" | "company";
@@ -69,7 +70,7 @@ export function buildTrendReport(rows: TrendSource[], period: "week" | "month") 
   const periodLabel = period === "week" ? "주간" : "월간";
   const generatedAt = new Date().toISOString();
   const overview = rows.length
-    ? `분석 기간에 자동수집 자료 ${rows.length}건이 확인되었습니다. 기술 동향 ${sections.technology.length}건, 시장 동향 ${sections.market.length}건, 기업 사건 ${sections.company.length}건이며, 가장 많은 비중을 차지한 영역은 ${CATEGORY_LABELS[leading]}입니다.`
+    ? `분석 기간에 모아와 Daily Desk 자료 ${rows.length}건이 확인되었습니다. 기술 동향 ${sections.technology.length}건, 시장 동향 ${sections.market.length}건, 기업 사건 ${sections.company.length}건이며, 가장 많은 비중을 차지한 영역은 ${CATEGORY_LABELS[leading]}입니다.`
     : `분석 기간에 저장된 자동수집 자료가 없어 보고서 본문을 작성하지 않았습니다.`;
   const markdownLines = [
     `# AI·NPU ${periodLabel} 동향 보고서`, "", `작성 시각: ${generatedAt}`, "", "## 종합 요약", "", overview,
@@ -84,7 +85,6 @@ export function buildTrendReport(rows: TrendSource[], period: "week" | "month") 
       markdownLines.push("", `출처: ${item.url || `/source/${item.id}`}`, "");
     }
   }
-  markdownLines.push("", "## 작성 기준", "", "이 보고서는 모아에 저장된 자동수집 자료의 원문 문장을 추출·분류해 작성했습니다. 원문에 없는 판단이나 전망은 추가하지 않았습니다.");
+  markdownLines.push("", "## 작성 기준", "", "이 보고서는 모아 자동수집 자료와 Daily Desk 공개 자료의 문장을 추출·분류해 작성했습니다. 원문에 없는 판단이나 전망은 추가하지 않았습니다.");
   return { period, periodLabel, generatedAt, overview, total: rows.length, allMetrics, sections, markdown: markdownLines.join("\n") };
 }
-

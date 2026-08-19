@@ -27,6 +27,17 @@ type TrendReport = {
   sections: { technology: ReportItem[]; market: ReportItem[]; company: ReportItem[] };
   markdown: string;
 };
+type UnifiedSearchResult = {
+  id: string;
+  sourceId?: number;
+  origin: "MOA" | "DAILY_DESK";
+  title: string;
+  text: string;
+  url: string;
+  kind: string;
+  source: string;
+  publishedAt?: string | null;
+};
 
 const seedSources: Source[] = [
   { id: -1, title: "2026 제품 전략 리서치.pdf", kind: "PDF", excerpt: "고객 인터뷰와 시장 진입 전략 정리", createdAt: "오늘" },
@@ -86,6 +97,8 @@ export default function Home() {
   const [showAll, setShowAll] = useState(false);
   const [filterKind, setFilterKind] = useState<"ALL" | "DOCUMENT" | "WEB" | "AUTO_WEB" | "MEMO">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [unifiedResults, setUnifiedResults] = useState<UnifiedSearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [searchPreview, setSearchPreview] = useState<Source | null>(null);
   const [helpTab, setHelpTab] = useState<"chatgpt" | "mcp">("mcp");
   const [view, setView] = useState<"library" | "discovery" | "report">("library");
@@ -127,6 +140,25 @@ export default function Home() {
         .then((result) => setSources(result.sources || [])))
       .catch(() => {});
   }, [authState]);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (authState !== "ready" || query.length < 2) {
+      setUnifiedResults([]);
+      setSearchLoading(false);
+      return;
+    }
+    setSearchLoading(true);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      fetch(`/api/search?q=${encodeURIComponent(query)}`, { signal: controller.signal })
+        .then((response) => response.json())
+        .then((data) => setUnifiedResults(data.results || []))
+        .catch(() => {})
+        .finally(() => setSearchLoading(false));
+    }, 300);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [authState, searchQuery]);
 
   async function loadDiscovery() {
     const [topicData, candidateData] = await Promise.all([
@@ -489,12 +521,16 @@ export default function Home() {
             <button onClick={() => setModal("link")}><i className="mint">⌁</i><span><strong>웹페이지 저장</strong><small>링크를 붙여넣어 저장</small></span><b>›</b></button>
             <button onClick={() => setModal("memo")}><i className="violet">✎</i><span><strong>메모 남기기</strong><small>떠오른 생각을 바로 기록</small></span><b>›</b></button>
           </section>
-          <div className="library-search"><span>⌕</span><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="제목, 메모, 문서 본문에서 검색" aria-label="자료 검색" />{searchQuery && <button onClick={() => setSearchQuery("")} aria-label="검색어 지우기">×</button>}</div>
-          <div className="section-title"><div><h3>{searchQuery ? "검색 결과" : filterKind !== "ALL" ? `${filterKind === "DOCUMENT" ? "문서" : filterKind === "WEB" ? "웹페이지" : filterKind === "AUTO_WEB" ? "자동수집" : "메모"} 자료` : showAll ? "전체 자료" : "최근 자료"}</h3><span>{visibleSources.length}개의 자료</span></div><button onClick={() => { if (searchQuery) setSearchQuery(""); else if (filterKind !== "ALL") setFilterKind("ALL"); else setShowAll((value) => !value); }}>{searchQuery ? "검색 지우기" : filterKind !== "ALL" ? "필터 해제" : showAll ? "최근 자료만 보기" : "전체 보기 →"}</button></div>
-          <section className="source-grid">
-            {(searchQuery || showAll || filterKind !== "ALL" ? visibleSources : visibleSources.slice(0, 6)).map((source) => <article className={source.id > 0 ? "openable" : ""} key={source.id} onClick={() => { if (searchQuery.trim()) setSearchPreview(source); else if (source.id > 0) window.open(`/source/${source.id}`, "_blank", "noopener,noreferrer"); }}><div className={`file-icon ${source.kind.toLowerCase()}`}>{source.kind === "WEB" || source.kind === "AUTO_WEB" ? "⌁" : source.kind === "MEMO" ? "✎" : "▤"}</div><span className="kind">{sourceKindLabel(source.kind)}</span><h4>{source.title}</h4><p>{source.excerpt}</p><footer><span>{source.createdAt}</span><button className="delete-source" onClick={(event) => { event.stopPropagation(); deleteSource(source); }} aria-label={`${source.title} 삭제`}>삭제</button></footer></article>)}
-            {visibleSources.length === 0 && <div className="empty-search"><span>⌕</span><strong>일치하는 자료가 없습니다.</strong><small>다른 검색어나 자료 유형을 사용해보세요.</small></div>}
-          </section>
+          <div className="library-search"><span>⌕</span><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="모아와 Daily Desk에서 함께 검색" aria-label="통합 자료 검색" />{searchQuery && <button onClick={() => setSearchQuery("")} aria-label="검색어 지우기">×</button>}</div>
+          <div className="section-title"><div><h3>{searchQuery ? "통합 검색 결과" : filterKind !== "ALL" ? `${filterKind === "DOCUMENT" ? "문서" : filterKind === "WEB" ? "웹페이지" : filterKind === "AUTO_WEB" ? "자동수집" : "메모"} 자료` : showAll ? "전체 자료" : "최근 자료"}</h3><span>{searchQuery ? `${unifiedResults.length}개 · 모아 + Daily Desk` : `${visibleSources.length}개의 자료`}</span></div><button onClick={() => { if (searchQuery) setSearchQuery(""); else if (filterKind !== "ALL") setFilterKind("ALL"); else setShowAll((value) => !value); }}>{searchQuery ? "검색 지우기" : filterKind !== "ALL" ? "필터 해제" : showAll ? "최근 자료만 보기" : "전체 보기 →"}</button></div>
+          {searchQuery ? <section className="unified-search-results">
+            {unifiedResults.map((result) => <a href={result.origin === "MOA" && result.sourceId ? `/source/${result.sourceId}` : result.url} target="_blank" rel="noreferrer" key={result.id}><div className={`search-origin ${result.origin.toLowerCase()}`}>{result.origin === "MOA" ? "모아" : "Daily Desk"}</div><div><span>{result.kind} · {result.source}</span><h4>{result.title}</h4><p>{result.text}</p></div><b>↗</b></a>)}
+            {searchLoading && <div className="searching-both">모아와 Daily Desk를 검색하고 있습니다…</div>}
+            {!searchLoading && unifiedResults.length === 0 && <div className="empty-search"><span>⌕</span><strong>일치하는 자료가 없습니다.</strong><small>다른 검색어를 사용해보세요.</small></div>}
+          </section> : <section className="source-grid">
+            {(showAll || filterKind !== "ALL" ? visibleSources : visibleSources.slice(0, 6)).map((source) => <article className={source.id > 0 ? "openable" : ""} key={source.id} onClick={() => { if (source.id > 0) window.open(`/source/${source.id}`, "_blank", "noopener,noreferrer"); }}><div className={`file-icon ${source.kind.toLowerCase()}`}>{source.kind === "WEB" || source.kind === "AUTO_WEB" ? "⌁" : source.kind === "MEMO" ? "✎" : "▤"}</div><span className="kind">{sourceKindLabel(source.kind)}</span><h4>{source.title}</h4><p>{source.excerpt}</p><footer><span>{source.createdAt}</span><button className="delete-source" onClick={(event) => { event.stopPropagation(); deleteSource(source); }} aria-label={`${source.title} 삭제`}>삭제</button></footer></article>)}
+            {visibleSources.length === 0 && <div className="empty-search"><span>⌕</span><strong>자료가 없습니다.</strong><small>다른 자료 유형을 사용해보세요.</small></div>}
+          </section>}
         </> : view === "discovery" ? <section className="discovery-workspace">
           <section className="discovery-intro"><div><span className="eyebrow">ZERO-COST DISCOVERY</span><h2>찾으러 다니지 않아도<br/><em>관심 자료가 모이도록.</em></h2><p>자료함의 내용을 기준으로 AI·NPU 시장, 기술, 기업 동향을 탐색합니다. 관련도 90점 이상이며 원문 추출에 성공한 자료는 자동 저장하고, 70점 이상 후보는 이곳에서 검토할 수 있습니다.</p></div><button onClick={runDiscovery} disabled={discoveryLoading}>{discoveryLoading ? "검색 중…" : "지금 새 자료 찾기"}</button></section>
           <section className="topic-panel"><div><h3>관심 주제</h3><span>최대 10개를 구체적으로 적을수록 결과가 좋아집니다.</span></div><form onSubmit={addTopic}><input value={newTopic} onChange={(event) => setNewTopic(event.target.value)} maxLength={60} placeholder="예: AI 반도체 실증 지원사업" disabled={topics.length >= 10}/><button disabled={topics.length >= 10}>추가</button></form><div className="topic-chips">{topics.map((topic) => <span key={topic.id}>{topic.query}<button onClick={() => removeTopic(topic.id)} aria-label={`${topic.query} 삭제`}>×</button></span>)}{topics.length === 0 && <small>등록된 관심 주제가 없습니다.</small>}</div></section>
@@ -518,7 +554,7 @@ export default function Home() {
               const items = trendReport.sections[category];
               return <section className="report-section" key={category}><div className="report-section-title"><h3>{label}</h3><span>{items.length}건</span></div>{items.length ? items.map((item) => <article key={item.id}><h4>{item.title}</h4><p>{item.summary}</p>{item.metrics.length > 0 && <div className="item-metrics">핵심 수치 · {item.metrics.join(" · ")}</div>}<a href={item.url || `/source/${item.id}`} target="_blank" rel="noreferrer">출처 원문 보기 ↗</a></article>) : <p className="report-empty">해당 기간에 분류된 자료가 없습니다.</p>}</section>;
             })}
-            <footer className="report-note">이 보고서는 저장된 원문의 문장을 추출·분류해 작성했습니다. 원문에 없는 판단이나 전망은 추가하지 않았습니다.</footer>
+            <footer className="report-note">이 보고서는 모아 자동수집 자료와 Daily Desk 공개 자료의 문장을 추출·분류해 작성했습니다. 원문에 없는 판단이나 전망은 추가하지 않았습니다.</footer>
           </article>}
         </section>}
       </section>
