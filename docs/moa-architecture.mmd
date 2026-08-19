@@ -1,38 +1,76 @@
 flowchart LR
-    subgraph client ["사용자 및 AI 도구"]
+    subgraph client ["사용자와 AI 도구"]
         browser["모아 웹 화면"]
         aiClient["ChatGPT 등 MCP 클라이언트"]
     end
+
     subgraph gateway ["웹 진입점"]
-        sites["OpenAI Sites와 Cloudflare"]
-    end
-    subgraph service ["모아 애플리케이션"]
-        webApp["Next.js와 vinext 웹 앱"]
-        sourceApi["자료 관리 API"]
-        discoveryApi["자동 수집 API"]
-        mcpApi["MCP 서버 API"]
-    end
-    subgraph datastore ["저장소"]
-        d1["Cloudflare D1 메타데이터와 본문"]
-        r2["Cloudflare R2 원본 파일"]
-    end
-    subgraph external ["외부 서비스"]
-        publicWeb["공개 웹페이지"]
-        searchFeed["무료 웹 검색 피드"]
+        sites["OpenAI Sites / Cloudflare"]
     end
 
-    browser -->|"HTTPS"| sites
-    aiClient -->|"Remote HTTP MCP"| sites
-    sites -->|"화면 요청"| webApp
-    sites -->|"자료 요청"| sourceApi
-    sites -->|"수집 요청"| discoveryApi
-    sites -->|"MCP 요청"| mcpApi
-    webApp -->|"API 호출"| sourceApi
-    webApp -->|"수집함 호출"| discoveryApi
-    sourceApi -->|"자료 기록"| d1
-    sourceApi -->|"파일 저장"| r2
-    discoveryApi -->|"후보와 주제 기록"| d1
-    mcpApi -->|"자료 검색과 조회"| d1
-    sourceApi -.->|"페이지 본문 가져오기"| publicWeb
-    discoveryApi -.->|"검색 결과 가져오기"| searchFeed
-    discoveryApi -.->|"선택한 페이지 저장"| publicWeb
+    subgraph application ["모아 애플리케이션"]
+        library["자료함 / 업로드 / 삭제"]
+        searchUi["모아 + Daily Desk 통합 검색"]
+        discoveryUi["자동 수집함<br/>70점 표시 / 90점 자동 저장"]
+        reportUi["동향 보고서<br/>주간 / 월간 / 복사 / 다운로드"]
+        sourceApi["자료 관리·검색 API"]
+        discoveryApi["관심 프로필·기관별 수집 API"]
+        trendApi["이슈 통합 보고서 생성 API"]
+        archiveApi["GitHub 보고서 보관함 API"]
+        mcpApi["Remote HTTP MCP 서버"]
+    end
+
+    subgraph processing ["분석 처리"]
+        extract["파일·웹 본문 추출"]
+        filter["무관 결과 차단<br/>URL·제목·본문 중복 제거"]
+        scoring["시장·기술·기업·보고서<br/>규칙 기반 관련도 계산"]
+        synthesis["시장·기업·기술·정책 분류<br/>동일 사건 군집화·이슈 재구성"]
+    end
+
+    subgraph storage ["저장소"]
+        d1["Cloudflare D1<br/>sources / topics / candidates / blocked_hosts"]
+        r2["Cloudflare R2<br/>업로드 원본"]
+        github["GitHub<br/>report/weekly / report/monthly"]
+    end
+
+    subgraph external ["무료 외부 자료원"]
+        freeSearch["무료 웹 검색 피드"]
+        institutions["기관 보고서<br/>SPRI·IITP·KISDI·KIET·KISTEP·ETRI·KOTRA<br/>OECD·WIPO·Stanford HAI"]
+        dailyDesk["Daily Desk 공개 데이터"]
+        publicWeb["공개 웹페이지"]
+    end
+
+    browser --> sites
+    aiClient -->|"MCP"| sites
+    sites --> library
+    sites --> searchUi
+    sites --> discoveryUi
+    sites --> reportUi
+    sites --> mcpApi
+
+    library --> sourceApi --> extract
+    searchUi --> sourceApi
+    discoveryUi --> discoveryApi
+    reportUi --> trendApi
+    reportUi --> archiveApi
+
+    extract --> d1
+    extract --> r2
+    sourceApi --> d1
+    sourceApi --> dailyDesk
+
+    discoveryApi --> freeSearch
+    discoveryApi --> institutions
+    discoveryApi --> dailyDesk
+    discoveryApi --> filter --> scoring --> d1
+    discoveryApi --> publicWeb
+
+    trendApi --> d1
+    trendApi --> dailyDesk
+    trendApi --> freeSearch
+    trendApi --> institutions
+    trendApi --> synthesis --> reportUi
+
+    archiveApi --> github --> archiveApi
+    mcpApi --> d1
+    mcpApi --> dailyDesk
