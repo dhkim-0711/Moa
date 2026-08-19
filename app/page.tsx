@@ -22,6 +22,8 @@ type TrendReport = {
   periodLabel: string;
   generatedAt: string;
   overview: string;
+  overviewBullets: string[];
+  sectionSummaries: { technology: string; market: string; company: string };
   total: number;
   allMetrics: string[];
   sections: { technology: ReportItem[]; market: ReportItem[]; company: ReportItem[] };
@@ -547,12 +549,12 @@ export default function Home() {
           {reportMessage && <div className="discovery-message">{reportMessage}</div>}
           {reportLoading && !trendReport ? <div className="report-loading">자동수집 자료를 읽고 보고서를 작성하고 있습니다…</div> : trendReport && <article className="trend-report">
             <div className="report-cover"><span className="eyebrow">MOA TREND BRIEF</span><h2>AI·NPU {trendReport.periodLabel}<br/>동향 보고서</h2><p>{new Date(trendReport.generatedAt).toLocaleString("ko-KR")} 기준 · 자동수집 자료 {trendReport.total}건</p></div>
-            <section className="report-summary"><h3>종합 요약</h3><p>{trendReport.overview}</p></section>
-            <section className="report-metrics"><h3>핵심 수치</h3>{trendReport.allMetrics.length ? <div>{trendReport.allMetrics.map((metric) => <span key={metric}>{metric}</span>)}</div> : <p>해당 기간 자료에서 단위가 명시된 핵심 수치를 찾지 못했습니다.</p>}</section>
+            <section className="report-summary"><div className="report-heading-number">01</div><div><h3>종합 요약</h3><p>{trendReport.overview}</p><ul>{trendReport.overviewBullets.map((item) => <li key={item}>{item}</li>)}</ul>{trendReport.allMetrics.length > 0 && <div className="summary-metrics">{trendReport.allMetrics.map((metric) => <span key={metric}>{metric}</span>)}</div>}</div></section>
             {(["technology", "market", "company"] as const).map((category) => {
-              const label = category === "technology" ? "기술 동향" : category === "market" ? "시장 동향" : "기업 사건";
+              const label = category === "technology" ? "기술 동향" : category === "market" ? "시장 동향" : "기업 동향";
+              const number = category === "technology" ? "02" : category === "market" ? "03" : "04";
               const items = trendReport.sections[category];
-              return <section className="report-section" key={category}><div className="report-section-title"><h3>{label}</h3><span>{items.length}건</span></div>{items.length ? items.map((item) => <article key={item.id}><h4>{item.title}</h4><p>{item.summary}</p>{item.metrics.length > 0 && <div className="item-metrics">핵심 수치 · {item.metrics.join(" · ")}</div>}<a href={item.url || `/source/${item.id}`} target="_blank" rel="noreferrer">출처 원문 보기 ↗</a></article>) : <p className="report-empty">해당 기간에 분류된 자료가 없습니다.</p>}</section>;
+              return <section className="report-section" key={category}><div className="report-section-title"><div className="report-heading-number">{number}</div><div><h3>{label}</h3><p>{trendReport.sectionSummaries[category]}</p></div><span>{items.length}건</span></div>{items.length ? items.map((item) => <article key={item.id}><h4>{item.title}</h4><p>{item.summary}</p>{item.metrics.length > 0 && <div className="item-metrics">핵심 수치 · {item.metrics.join(" · ")}</div>}<a href={item.url || `/source/${item.id}`} target="_blank" rel="noreferrer">출처 원문 보기 ↗</a></article>) : <p className="report-empty">해당 기간에 분류된 자료가 없습니다.</p>}</section>;
             })}
             <footer className="report-note">이 보고서는 모아 자동수집 자료와 Daily Desk 공개 자료의 문장을 추출·분류해 작성했습니다. 원문에 없는 판단이나 전망은 추가하지 않았습니다.</footer>
           </article>}

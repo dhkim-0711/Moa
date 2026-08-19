@@ -13,7 +13,7 @@ export type TrendCategory = "technology" | "market" | "company";
 const CATEGORY_LABELS: Record<TrendCategory, string> = {
   technology: "기술 동향",
   market: "시장 동향",
-  company: "기업 사건",
+  company: "기업 동향",
 };
 
 const TERMS: Record<TrendCategory, string[]> = {
@@ -70,14 +70,25 @@ export function buildTrendReport(rows: TrendSource[], period: "week" | "month") 
   const periodLabel = period === "week" ? "주간" : "월간";
   const generatedAt = new Date().toISOString();
   const overview = rows.length
-    ? `분석 기간에 모아와 Daily Desk 자료 ${rows.length}건이 확인되었습니다. 기술 동향 ${sections.technology.length}건, 시장 동향 ${sections.market.length}건, 기업 사건 ${sections.company.length}건이며, 가장 많은 비중을 차지한 영역은 ${CATEGORY_LABELS[leading]}입니다.`
+    ? `분석 기간에 모아와 Daily Desk 자료 ${rows.length}건이 확인되었습니다. 기술 동향 ${sections.technology.length}건, 시장 동향 ${sections.market.length}건, 기업 동향 ${sections.company.length}건이며, 가장 많은 비중을 차지한 영역은 ${CATEGORY_LABELS[leading]}입니다.`
     : `분석 기간에 저장된 자동수집 자료가 없어 보고서 본문을 작성하지 않았습니다.`;
+  const overviewBullets = rows.length ? [
+    `수집 범위: 모아와 Daily Desk의 ${periodLabel} 자료 ${rows.length}건`,
+    `영역별 분포: 기술 ${sections.technology.length}건 · 시장 ${sections.market.length}건 · 기업 ${sections.company.length}건`,
+    `핵심 관찰: ${CATEGORY_LABELS[leading]} 관련 자료가 가장 많이 확인됨`,
+  ] : ["해당 기간에 분석할 자동수집 자료가 없습니다."];
+  const sectionSummaries = Object.fromEntries((Object.keys(sections) as TrendCategory[]).map((category) => [
+    category,
+    sections[category].length
+      ? `${sections[category].length}건이 확인되었습니다. 주요 내용은 ${sections[category].slice(0, 2).map((item) => item.title).join(" / ")}입니다.`
+      : "해당 기간에 확인된 자료가 없습니다.",
+  ])) as Record<TrendCategory, string>;
   const markdownLines = [
-    `# AI·NPU ${periodLabel} 동향 보고서`, "", `작성 시각: ${generatedAt}`, "", "## 종합 요약", "", overview,
+    `# AI·NPU ${periodLabel} 동향 보고서`, "", `작성 시각: ${generatedAt}`, "", "## 1. 종합 요약", "", overview, "", ...overviewBullets.map((item) => `- ${item}`),
   ];
-  if (allMetrics.length) markdownLines.push("", "## 핵심 수치", "", ...allMetrics.map((metric) => `- ${metric}`));
-  for (const category of Object.keys(sections) as TrendCategory[]) {
-    markdownLines.push("", `## ${CATEGORY_LABELS[category]}`, "");
+  if (allMetrics.length) markdownLines.push("", "핵심 수치", "", ...allMetrics.map((metric) => `- ${metric}`));
+  for (const [index, category] of (Object.keys(sections) as TrendCategory[]).entries()) {
+    markdownLines.push("", `## ${index + 2}. ${CATEGORY_LABELS[category]}`, "", sectionSummaries[category], "");
     if (!sections[category].length) markdownLines.push("- 해당 기간에 분류된 자료가 없습니다.");
     for (const item of sections[category]) {
       markdownLines.push(`### ${item.title}`, "", item.summary);
@@ -85,6 +96,6 @@ export function buildTrendReport(rows: TrendSource[], period: "week" | "month") 
       markdownLines.push("", `출처: ${item.url || `/source/${item.id}`}`, "");
     }
   }
-  markdownLines.push("", "## 작성 기준", "", "이 보고서는 모아 자동수집 자료와 Daily Desk 공개 자료의 문장을 추출·분류해 작성했습니다. 원문에 없는 판단이나 전망은 추가하지 않았습니다.");
-  return { period, periodLabel, generatedAt, overview, total: rows.length, allMetrics, sections, markdown: markdownLines.join("\n") };
+  markdownLines.push("", "---", "이 보고서는 모아 자동수집 자료와 Daily Desk 공개 자료의 문장을 추출·분류해 작성했습니다. 원문에 없는 판단이나 전망은 추가하지 않았습니다.");
+  return { period, periodLabel, generatedAt, overview, overviewBullets, sectionSummaries, total: rows.length, allMetrics, sections, markdown: markdownLines.join("\n") };
 }
