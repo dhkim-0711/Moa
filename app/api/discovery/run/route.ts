@@ -2,7 +2,7 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { blockedHosts, discoveryCandidates, discoveryTopics, sources } from "../../../../db/schema";
 import { requireAuthorized } from "../../../../lib/auth";
-import { canonicalUrl, deriveInterestProfile, fetchReadablePage, isInstitutionalReport, relevanceScore, searchWeb, similarContent, similarTitle } from "../../../../lib/discovery";
+import { canonicalUrl, deriveInterestProfile, fetchReadablePage, INSTITUTIONAL_REPORT_QUERIES, isInstitutionalReport, relevanceScore, searchWeb, similarContent, similarTitle } from "../../../../lib/discovery";
 import { collectDailyDeskCandidates } from "../../../../lib/daily-desk";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -34,6 +34,9 @@ export async function POST(request: Request) {
       plans.set(topic.query, { query: topic.query, topicId: topic.id, topicRowId: topic.id });
     }
   }
+  for (const query of INSTITUTIONAL_REPORT_QUERIES) {
+    plans.set(query, { query, topicId: null });
+  }
   let added = 0;
   const errors: string[] = [];
   const knownCandidates = await db.select({ title: discoveryCandidates.title, url: discoveryCandidates.url }).from(discoveryCandidates);
@@ -52,7 +55,9 @@ export async function POST(request: Request) {
         if (blocked.has(host)) continue;
         const normalizedUrl = canonicalUrl(result.url);
         if (knownCandidateUrls.has(normalizedUrl) || knownCandidateTitles.some((title) => similarTitle(title, result.title))) continue;
-        const score = relevanceScore(plan.query, result.title, result.summary, profile.terms);
+        const institutionalReport = isInstitutionalReport(result.title, result.summary, result.url);
+        const calculatedScore = relevanceScore(plan.query, result.title, result.summary, profile.terms);
+        const score = institutionalReport ? Math.max(calculatedScore, /\.pdf(?:$|[?#])/i.test(result.url) ? 92 : 84) : calculatedScore;
         const inserted = await db.insert(discoveryCandidates).values({
           topicId: plan.topicId,
           query: plan.query,

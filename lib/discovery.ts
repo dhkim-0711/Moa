@@ -31,6 +31,16 @@ const COMPANY_EVENTS = ["수주", "양산", "투자유치", "투자 유치", "�
 const POLICY_TERMS = ["보도자료", "정책", "지원사업", "지원 사업", "공고", "협약식", "간담회", "장관", "정부", "부처", "실증사업", "실증 사업"];
 const REPORT_TERMS = ["이슈리포트", "이슈 리포트", "연구보고서", "산업동향", "백서", "전망 보고서", "white paper", "research report", "market report", "outlook"];
 const RESEARCH_HOSTS = ["oecd.org", "wipo.int", "worldbank.org", "imf.org", "stanford.edu", "kdi.re.kr", "kisdi.re.kr", "kistep.re.kr", "iitp.kr", "spri.kr", "kiet.re.kr", "kotra.or.kr", "etri.re.kr"];
+export const INSTITUTIONAL_REPORT_QUERIES = [
+  "site:spri.kr AI 반도체 이슈리포트",
+  "site:iitp.kr AI 반도체 주간기술동향 보고서",
+  "site:kisdi.re.kr OR site:kiet.re.kr 인공지능 반도체 산업 연구보고서",
+  "site:kistep.re.kr OR site:etri.re.kr AI 반도체 기술동향 PDF",
+  "site:kotra.or.kr AI 반도체 해외시장 보고서",
+  "site:oecd.org OR site:wipo.int artificial intelligence semiconductor report PDF",
+  "site:hai.stanford.edu AI Index report hardware industry",
+  "AI accelerator market outlook research report filetype:pdf 2026",
+];
 const COMPANY_TERMS = [
   "mangoboost", "망고부스트", "퓨리오사ai", "리벨리온", "딥엑스", "사피온",
   "엔비디아", "nvidia", "amd", "인텔", "intel", "삼성전자", "sk하이닉스",
