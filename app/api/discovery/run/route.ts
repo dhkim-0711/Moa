@@ -29,6 +29,7 @@ export async function POST(request: Request) {
 
   const plans = new Map<string, { query: string; topicId: number | null; topicRowId?: number }>();
   for (const topic of topics) {
+    if (topic.origin === "automatic" && /(정책|지원사업|실증 사업|실증사업|정부|보도자료)/i.test(topic.query)) continue;
     if (force || !topic.lastRunAt || new Date(topic.lastRunAt).getTime() < cutoffDate.getTime()) {
       plans.set(topic.query, { query: topic.query, topicId: topic.id, topicRowId: topic.id });
     }

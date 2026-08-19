@@ -14,16 +14,19 @@ const INTEREST_TERMS = [
 ];
 
 const BASE_INTEREST_QUERIES = [
-  "AI 반도체 NPU 시장 동향",
-  "AI 반도체 NPU 기술 동향",
-  "AI 반도체 NPU 기업 투자 동향",
-  "AI 반도체 정책 실증 사업 동향",
+  "AI 반도체 NPU 시장 수요 점유율 매출 출하량",
+  "AI 반도체 NPU 신제품 성능 벤치마크 아키텍처",
+  "AI 반도체 NPU 기업 도입 공급 계약 데이터센터",
+  "global AI accelerator NPU market adoption company deployment",
+  "AI chip startup funding partnership product launch",
+  "HBM AI accelerator supply demand price capacity",
 ];
 
 const TITLE_ANCHORS = ["npu", "ai 반도체", "ai semiconductor", "ai 가속기", "ai accelerator"];
-const MARKET_TERMS = ["시장규모", "시장 규모", "점유율", "매출", "출하량", "투자액", "cagr"];
-const TECH_TERMS = ["tops", "tops/w", "전력효율", "전력 효율", "추론 성능", "hbm", "칩렛", "cxl", "공정"];
-const COMPANY_EVENTS = ["수주", "양산", "투자유치", "투자 유치", "공급계약", "공급 계약", "협력", "인수"];
+const MARKET_TERMS = ["시장규모", "시장 규모", "점유율", "매출", "출하량", "투자액", "cagr", "수요", "공급", "가격", "capacity", "demand", "revenue", "shipment", "adoption"];
+const TECH_TERMS = ["tops", "tops/w", "전력효율", "전력 효율", "추론 성능", "hbm", "칩렛", "cxl", "공정", "benchmark", "architecture", "inference"];
+const COMPANY_EVENTS = ["수주", "양산", "투자유치", "투자 유치", "공급계약", "공급 계약", "협력", "인수", "도입", "채택", "출시", "deployment", "adoption", "partnership", "launch"];
+const POLICY_TERMS = ["보도자료", "정책", "지원사업", "지원 사업", "공고", "협약식", "간담회", "장관", "정부", "부처", "실증사업", "실증 사업"];
 const COMPANY_TERMS = [
   "mangoboost", "망고부스트", "퓨리오사ai", "리벨리온", "딥엑스", "사피온",
   "엔비디아", "nvidia", "amd", "인텔", "intel", "삼성전자", "sk하이닉스",
@@ -76,10 +79,9 @@ export function deriveInterestProfile(items: Array<{ title: string; content: str
     terms: anchors,
     queries: [...new Set([
       ...BASE_INTEREST_QUERIES,
-      `${focus} 시장 동향`,
-      `${focus} 기술 개발 동향`,
-      `${focus} 기업 투자 사업 동향`,
-    ])].slice(0, 6),
+      `${focus} 기업 도입 제품 출시 기술 성능`,
+      `${focus} 해외 시장 수요 공급 투자`,
+    ])].slice(0, 8),
   };
 }
 
@@ -102,12 +104,15 @@ export function relevanceScore(query: string, title: string, summary: string, in
     || (techHits >= 1 && /\d+(?:\.\d+)?\s*(?:tops(?:\/w)?|w|nm|gb\/s|%)/i.test(combined));
   const companyEvidence = COMPANY_TERMS.some((term) => combined.includes(term))
     && COMPANY_EVENTS.some((term) => combined.includes(term));
+  const policyHits = POLICY_TERMS.filter((term) => combined.includes(term)).length;
   const specificEvidence = marketEvidence || techEvidence || companyEvidence;
   const baseScore = Math.min(89, 45 + titleMatches * 10 + summaryMatches * 4 + Math.min(10, interestMatches * 2));
+  if (policyHits && !techEvidence && !marketEvidence && !companyEvidence) return Math.min(69, baseScore - policyHits * 8);
+  if (policyHits >= 2 && !marketEvidence && !techEvidence) return Math.min(79, baseScore - 10);
   if (!hasTitleAnchor || !specificEvidence) return baseScore;
   const evidenceCount = [marketEvidence, techEvidence, companyEvidence].filter(Boolean).length;
   const titleInterestMatches = interestTerms.filter((term) => normalizedTitle.includes(term.toLocaleLowerCase("ko"))).length;
-  return Math.min(99, 90 + Math.min(6, evidenceCount * 2 + titleInterestMatches));
+  return Math.min(99, 90 + Math.min(6, evidenceCount * 2 + titleInterestMatches) - Math.min(6, policyHits * 3));
 }
 
 export function similarTitle(left: string, right: string) {
