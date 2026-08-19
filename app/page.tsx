@@ -45,6 +45,18 @@ type ArchivedReport = {
   filename: string;
   content: string;
 };
+
+const REPORT_REPOSITORY = "dhkim-0711/Moa";
+const REPORT_BRANCH = "main";
+
+function reportDirectory(period: "week" | "month") {
+  return period === "week" ? "report/weekly" : "report/monthly";
+}
+
+function reportTitle(filename: string, period: "week" | "month") {
+  const stem = filename.replace(/\.md$/i, "").replace(/[-_]/g, " ");
+  return `${stem} ${period === "week" ? "주간" : "월간"} 동향보고서`;
+}
 type UnifiedSearchResult = {
   id: string;
   sourceId?: number;
@@ -302,10 +314,15 @@ export default function Home() {
   async function loadArchivedReport(report: ArchivedReport) {
     setArchiveLoading(true);
     try {
-      const response = await fetch(`/api/reports/archive?period=${report.period}&file=${encodeURIComponent(report.filename)}`);
-      const data = await response.json();
-      if (response.ok) setSelectedArchive(data.report || null);
-      else setReportMessage(data.error || "저장된 보고서를 불러오지 못했습니다.");
+      const directory = reportDirectory(report.period);
+      const response = await fetch(`https://raw.githubusercontent.com/${REPORT_REPOSITORY}/${REPORT_BRANCH}/${directory}/${encodeURIComponent(report.filename)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("report fetch failed");
+      const content = await response.text();
+      const title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() || report.title;
+      setSelectedArchive({ ...report, title, content });
+      setReportMessage("");
+    } catch {
+      setReportMessage("저장된 보고서를 불러오지 못했습니다.");
     } finally { setArchiveLoading(false); }
   }
 
@@ -313,9 +330,29 @@ export default function Home() {
     setArchiveLoading(true);
     setArchivedReports([]);
     try {
-      const response = await fetch(`/api/reports/archive?period=${period}`);
-      const data = await response.json();
-      const reports = data.reports || [];
+      const directory = reportDirectory(period);
+      const response = await fetch(`https://api.github.com/repos/${REPORT_REPOSITORY}/contents/${directory}?ref=${REPORT_BRANCH}`, {
+        headers: { accept: "application/vnd.github+json" },
+        cache: "no-store",
+      });
+      if (response.status === 404) {
+        setSelectedArchive(null);
+        return;
+      }
+      if (!response.ok) throw new Error("archive fetch failed");
+      const rows = await response.json() as Array<{ name: string; type: "file" | "dir" }>;
+      const reports: ArchivedReport[] = rows
+        .filter((row) => row.type === "file" && row.name.toLowerCase().endsWith(".md") && !row.name.toLowerCase().startsWith("readme"))
+        .map((row) => ({
+          id: `${period}:${row.name}`,
+          period,
+          periodLabel: period === "week" ? "주간" : "월간",
+          title: reportTitle(row.name, period),
+          publishedAt: row.name.match(/\d{4}-\d{2}(?:-\d{2})?/)?.[0] || "",
+          filename: row.name,
+          content: "",
+        }))
+        .sort((a, b) => b.filename.localeCompare(a.filename, "ko"));
       setArchivedReports(reports);
       if (reports[0]) await loadArchivedReport(reports[0]);
       else setSelectedArchive(null);
