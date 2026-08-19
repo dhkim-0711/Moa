@@ -16,6 +16,17 @@ type Source = {
 type DiscoveryTopic = { id: number; query: string; lastRunAt?: string | null };
 type DiscoveryCandidate = { id: number; query: string; title: string; url: string; summary?: string | null; host?: string | null; relevance: number; publishedAt?: string | null };
 type WeeklyDiscovery = { discovered: number; saved: number; dismissed: number; topTopic?: string | null };
+type ReportItem = Source & { summary: string; metrics: string[] };
+type TrendReport = {
+  period: "week" | "month";
+  periodLabel: string;
+  generatedAt: string;
+  overview: string;
+  total: number;
+  allMetrics: string[];
+  sections: { technology: ReportItem[]; market: ReportItem[]; company: ReportItem[] };
+  markdown: string;
+};
 
 const seedSources: Source[] = [
   { id: -1, title: "2026 제품 전략 리서치.pdf", kind: "PDF", excerpt: "고객 인터뷰와 시장 진입 전략 정리", createdAt: "오늘" },
@@ -77,13 +88,17 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchPreview, setSearchPreview] = useState<Source | null>(null);
   const [helpTab, setHelpTab] = useState<"chatgpt" | "mcp">("mcp");
-  const [view, setView] = useState<"library" | "discovery">("library");
+  const [view, setView] = useState<"library" | "discovery" | "report">("library");
   const [topics, setTopics] = useState<DiscoveryTopic[]>([]);
   const [candidates, setCandidates] = useState<DiscoveryCandidate[]>([]);
   const [weekly, setWeekly] = useState<WeeklyDiscovery>({ discovered: 0, saved: 0, dismissed: 0 });
   const [newTopic, setNewTopic] = useState("");
   const [discoveryLoading, setDiscoveryLoading] = useState(false);
   const [discoveryMessage, setDiscoveryMessage] = useState("");
+  const [reportPeriod, setReportPeriod] = useState<"week" | "month">("week");
+  const [trendReport, setTrendReport] = useState<TrendReport | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportMessage, setReportMessage] = useState("");
   const [sources, setSources] = useState<Source[]>(seedSources);
   const [modal, setModal] = useState<"link" | "memo" | "file" | "help" | null>(null);
   const [title, setTitle] = useState("");
@@ -168,6 +183,45 @@ export default function Home() {
     if (data.source) setSources((items) => [data.source, ...items]);
     setDiscoveryMessage(action === "save" ? "정식 자료함에 저장했습니다." : action === "block" ? `${candidate.host || "이 출처"}를 차단했습니다.` : "관심 없음으로 처리했습니다.");
     await loadDiscovery();
+  }
+
+  async function loadTrendReport(period: "week" | "month") {
+    setReportLoading(true);
+    setReportMessage("");
+    try {
+      const response = await fetch(`/api/reports/trends?period=${period}`);
+      const data = await response.json();
+      setTrendReport(data.report || null);
+    } catch {
+      setReportMessage("보고서를 작성하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    } finally { setReportLoading(false); }
+  }
+
+  async function openTrendReport() {
+    setView("report");
+    await loadTrendReport(reportPeriod);
+  }
+
+  async function changeReportPeriod(period: "week" | "month") {
+    setReportPeriod(period);
+    await loadTrendReport(period);
+  }
+
+  async function copyReport() {
+    if (!trendReport) return;
+    await navigator.clipboard.writeText(trendReport.markdown);
+    setReportMessage("보고서를 클립보드에 복사했습니다.");
+  }
+
+  function downloadReport() {
+    if (!trendReport) return;
+    const blob = new Blob([trendReport.markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `모아_AI-NPU_${trendReport.periodLabel}_동향보고서.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   async function unlock(event: FormEvent) {
@@ -409,6 +463,7 @@ export default function Home() {
         <nav>
           <button className={view === "library" ? "active" : ""} onClick={openLibraryHome}><span>▦</span> 자료함 <b>{counts.all}</b></button>
           <button className={view === "discovery" ? "active" : ""} onClick={openDiscovery}><span>✦</span> 자동 수집함 <b>{candidates.length || ""}</b></button>
+          <button className={view === "report" ? "active" : ""} onClick={openTrendReport}><span>▤</span> 동향 보고서</button>
           <button onClick={() => setModal("help")}><span>⌁</span> ChatGPT 연결 방법</button>
         </nav>
         <div className="side-label">자료 유형</div>
@@ -422,7 +477,7 @@ export default function Home() {
       </aside>
 
       <section className="workspace">
-        <header><div><h1>{view === "library" ? "내 자료함" : "자동 수집함"}</h1><p>{view === "library" ? "ChatGPT가 활용할 PDF, 워드, 엑셀, PPT, HWPX와 메모를 저장하고 관리하세요." : "관심 주제를 바탕으로 무료 웹 검색에서 새로운 자료 후보를 모읍니다."}</p></div><button className="help" onClick={() => setModal("help")} aria-label="사용 방법">?</button></header>
+        <header><div><h1>{view === "library" ? "내 자료함" : view === "discovery" ? "자동 수집함" : "동향 보고서"}</h1><p>{view === "library" ? "ChatGPT가 활용할 PDF, 워드, 엑셀, PPT, HWPX와 메모를 저장하고 관리하세요." : view === "discovery" ? "관심 주제를 바탕으로 무료 웹 검색에서 새로운 자료 후보를 모읍니다." : "자동수집 자료를 기술·시장·기업별로 정리한 근거 중심 보고서입니다."}</p></div><button className="help" onClick={() => setModal("help")} aria-label="사용 방법">?</button></header>
 
         {view === "library" ? <>
           <section className="hero-card">
@@ -440,7 +495,7 @@ export default function Home() {
             {(searchQuery || showAll || filterKind !== "ALL" ? visibleSources : visibleSources.slice(0, 6)).map((source) => <article className={source.id > 0 ? "openable" : ""} key={source.id} onClick={() => { if (searchQuery.trim()) setSearchPreview(source); else if (source.id > 0) window.open(`/source/${source.id}`, "_blank", "noopener,noreferrer"); }}><div className={`file-icon ${source.kind.toLowerCase()}`}>{source.kind === "WEB" || source.kind === "AUTO_WEB" ? "⌁" : source.kind === "MEMO" ? "✎" : "▤"}</div><span className="kind">{sourceKindLabel(source.kind)}</span><h4>{source.title}</h4><p>{source.excerpt}</p><footer><span>{source.createdAt}</span><button className="delete-source" onClick={(event) => { event.stopPropagation(); deleteSource(source); }} aria-label={`${source.title} 삭제`}>삭제</button></footer></article>)}
             {visibleSources.length === 0 && <div className="empty-search"><span>⌕</span><strong>일치하는 자료가 없습니다.</strong><small>다른 검색어나 자료 유형을 사용해보세요.</small></div>}
           </section>
-        </> : <section className="discovery-workspace">
+        </> : view === "discovery" ? <section className="discovery-workspace">
           <section className="discovery-intro"><div><span className="eyebrow">ZERO-COST DISCOVERY</span><h2>찾으러 다니지 않아도<br/><em>관심 자료가 모이도록.</em></h2><p>자료함의 내용을 기준으로 AI·NPU 시장, 기술, 기업 동향을 탐색합니다. 관련도 90점 이상이며 원문 추출에 성공한 자료는 자동 저장하고, 70점 이상 후보는 이곳에서 검토할 수 있습니다.</p></div><button onClick={runDiscovery} disabled={discoveryLoading}>{discoveryLoading ? "검색 중…" : "지금 새 자료 찾기"}</button></section>
           <section className="topic-panel"><div><h3>관심 주제</h3><span>최대 10개를 구체적으로 적을수록 결과가 좋아집니다.</span></div><form onSubmit={addTopic}><input value={newTopic} onChange={(event) => setNewTopic(event.target.value)} maxLength={60} placeholder="예: AI 반도체 실증 지원사업" disabled={topics.length >= 10}/><button disabled={topics.length >= 10}>추가</button></form><div className="topic-chips">{topics.map((topic) => <span key={topic.id}>{topic.query}<button onClick={() => removeTopic(topic.id)} aria-label={`${topic.query} 삭제`}>×</button></span>)}{topics.length === 0 && <small>등록된 관심 주제가 없습니다.</small>}</div></section>
           <section className="weekly-report"><div><small>최근 7일 발견</small><strong>{weekly.discovered}</strong></div><div><small>자료함에 저장</small><strong>{weekly.saved}</strong></div><div><small>제외·차단</small><strong>{weekly.dismissed}</strong></div><div><small>가장 활발한 주제</small><strong>{weekly.topTopic || "—"}</strong></div></section>
@@ -448,6 +503,23 @@ export default function Home() {
           <div className="section-title"><div><h3>수집 후보</h3><span>{candidates.length}개의 자료</span></div><small>검토 후 정식 자료함에 저장하세요.</small></div>
           <section className="candidate-list">{candidates.map((candidate) => <article key={candidate.id}><div className="candidate-score"><strong>{candidate.relevance}</strong><small>관련도</small></div><div className="candidate-copy"><span>{candidate.query} · {candidate.host}</span><h4><a href={candidate.url} target="_blank" rel="noreferrer">{candidate.title}</a></h4><p>{candidate.summary || "검색 결과에 요약이 없습니다."}</p></div><div className="candidate-actions"><button className="save-candidate" onClick={() => handleCandidate(candidate, "save")}>자료함에 저장</button><button onClick={() => handleCandidate(candidate, "dismiss")}>관심 없음</button><button onClick={() => handleCandidate(candidate, "block")}>출처 차단</button></div></article>)}{!discoveryLoading && candidates.length === 0 && <div className="empty-search"><span>✦</span><strong>아직 수집된 후보가 없습니다.</strong><small>관심 주제를 추가하고 새 자료 찾기를 실행해보세요.</small></div>}</section>
           <p className="free-search-note">무료 공개 검색 피드 기반이라 결과 범위와 안정성이 달라질 수 있습니다. 개인·비영리 용도로만 사용하세요.</p>
+        </section> : <section className="trend-report-workspace">
+          <section className="report-toolbar">
+            <div className="period-tabs"><button className={reportPeriod === "week" ? "selected" : ""} onClick={() => changeReportPeriod("week")}>주간</button><button className={reportPeriod === "month" ? "selected" : ""} onClick={() => changeReportPeriod("month")}>월간</button></div>
+            <div className="report-actions"><button onClick={() => loadTrendReport(reportPeriod)} disabled={reportLoading}>{reportLoading ? "작성 중…" : "새로 작성"}</button><button onClick={copyReport} disabled={!trendReport}>복사</button><button className="download-report" onClick={downloadReport} disabled={!trendReport}>Markdown 다운로드</button></div>
+          </section>
+          {reportMessage && <div className="discovery-message">{reportMessage}</div>}
+          {reportLoading && !trendReport ? <div className="report-loading">자동수집 자료를 읽고 보고서를 작성하고 있습니다…</div> : trendReport && <article className="trend-report">
+            <div className="report-cover"><span className="eyebrow">MOA TREND BRIEF</span><h2>AI·NPU {trendReport.periodLabel}<br/>동향 보고서</h2><p>{new Date(trendReport.generatedAt).toLocaleString("ko-KR")} 기준 · 자동수집 자료 {trendReport.total}건</p></div>
+            <section className="report-summary"><h3>종합 요약</h3><p>{trendReport.overview}</p></section>
+            <section className="report-metrics"><h3>핵심 수치</h3>{trendReport.allMetrics.length ? <div>{trendReport.allMetrics.map((metric) => <span key={metric}>{metric}</span>)}</div> : <p>해당 기간 자료에서 단위가 명시된 핵심 수치를 찾지 못했습니다.</p>}</section>
+            {(["technology", "market", "company"] as const).map((category) => {
+              const label = category === "technology" ? "기술 동향" : category === "market" ? "시장 동향" : "기업 사건";
+              const items = trendReport.sections[category];
+              return <section className="report-section" key={category}><div className="report-section-title"><h3>{label}</h3><span>{items.length}건</span></div>{items.length ? items.map((item) => <article key={item.id}><h4>{item.title}</h4><p>{item.summary}</p>{item.metrics.length > 0 && <div className="item-metrics">핵심 수치 · {item.metrics.join(" · ")}</div>}<a href={item.url || `/source/${item.id}`} target="_blank" rel="noreferrer">출처 원문 보기 ↗</a></article>) : <p className="report-empty">해당 기간에 분류된 자료가 없습니다.</p>}</section>;
+            })}
+            <footer className="report-note">이 보고서는 저장된 원문의 문장을 추출·분류해 작성했습니다. 원문에 없는 판단이나 전망은 추가하지 않았습니다.</footer>
+          </article>}
         </section>}
       </section>
 
