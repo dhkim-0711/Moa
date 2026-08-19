@@ -36,6 +36,15 @@ type TrendReport = {
   monitoring: string[];
   markdown: string;
 };
+type ArchivedReport = {
+  id: string;
+  period: "week" | "month";
+  periodLabel: string;
+  title: string;
+  publishedAt: string;
+  filename: string;
+  content: string;
+};
 type UnifiedSearchResult = {
   id: string;
   sourceId?: number;
@@ -99,6 +108,54 @@ function highlighted(text: string, query: string): ReactNode[] {
   return result;
 }
 
+function markdownInline(text: string, keyPrefix: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const pattern = /(\[[^\]]+\]\(https?:\/\/[^)]+\)|\*\*[^*]+\*\*)/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text))) {
+    if (match.index > cursor) nodes.push(text.slice(cursor, match.index));
+    const token = match[0];
+    const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+    if (link) nodes.push(<a key={`${keyPrefix}-${match.index}`} href={link[2]} target="_blank" rel="noreferrer">{link[1]}</a>);
+    else nodes.push(<strong key={`${keyPrefix}-${match.index}`}>{token.slice(2, -2)}</strong>);
+    cursor = pattern.lastIndex;
+  }
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes.length ? nodes : [text];
+}
+
+function MarkdownDocument({ content }: { content: string }) {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const nodes: ReactNode[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.trim() || line.trim() === "//") continue;
+    if (line.trim().startsWith("|") && lines[index + 1]?.trim().match(/^\|[\s:|-]+\|$/)) {
+      const rows: string[][] = [];
+      while (index < lines.length && lines[index].trim().startsWith("|")) {
+        if (!lines[index].trim().match(/^\|[\s:|-]+\|$/)) rows.push(lines[index].trim().split("|").slice(1, -1).map((cell) => cell.trim()));
+        index += 1;
+      }
+      index -= 1;
+      nodes.push(<div className="md-table-wrap" key={`table-${index}`}><table><thead><tr>{rows[0]?.map((cell, cellIndex) => <th key={cellIndex}>{markdownInline(cell, `th-${index}-${cellIndex}`)}</th>)}</tr></thead><tbody>{rows.slice(1).map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{markdownInline(cell, `td-${index}-${rowIndex}-${cellIndex}`)}</td>)}</tr>)}</tbody></table></div>);
+      continue;
+    }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      const children = markdownInline(heading[2], `heading-${index}`);
+      nodes.push(heading[1].length === 1 ? <h1 key={index}>{children}</h1> : heading[1].length === 2 ? <h2 key={index}>{children}</h2> : <h3 key={index}>{children}</h3>);
+      continue;
+    }
+    if (/^---+$/.test(line.trim())) { nodes.push(<hr key={index} />); continue; }
+    if (/^\s*-\s+/.test(line)) { nodes.push(<div className={line.startsWith("  ") ? "md-bullet md-sub-bullet" : "md-bullet"} key={index}>{markdownInline(line.replace(/^\s*-\s+/, ""), `bullet-${index}`)}</div>); continue; }
+    if (line.startsWith("> ")) { nodes.push(<blockquote key={index}>{markdownInline(line.slice(2), `quote-${index}`)}</blockquote>); continue; }
+    if (line.startsWith("* 출처")) { nodes.push(<p className="md-source" key={index}>{markdownInline(line, `source-${index}`)}</p>); continue; }
+    nodes.push(<p key={index}>{markdownInline(line, `paragraph-${index}`)}</p>);
+  }
+  return <div className="markdown-document">{nodes}</div>;
+}
+
 export default function Home() {
   const [authState, setAuthState] = useState<"checking" | "locked" | "ready">("checking");
   const [accessCode, setAccessCode] = useState("");
@@ -119,6 +176,9 @@ export default function Home() {
   const [discoveryMessage, setDiscoveryMessage] = useState("");
   const [reportPeriod, setReportPeriod] = useState<"week" | "month">("week");
   const [trendReport, setTrendReport] = useState<TrendReport | null>(null);
+  const [archivedReports, setArchivedReports] = useState<ArchivedReport[]>([]);
+  const [selectedArchive, setSelectedArchive] = useState<ArchivedReport | null>(null);
+  const [archiveLoading, setArchiveLoading] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportMessage, setReportMessage] = useState("");
   const [sources, setSources] = useState<Source[]>(seedSources);
@@ -227,6 +287,7 @@ export default function Home() {
   }
 
   async function loadTrendReport(period: "week" | "month") {
+    setSelectedArchive(null);
     setReportLoading(true);
     setReportMessage("");
     try {
@@ -238,31 +299,61 @@ export default function Home() {
     } finally { setReportLoading(false); }
   }
 
+  async function loadArchivedReport(report: ArchivedReport) {
+    setArchiveLoading(true);
+    try {
+      const response = await fetch(`/api/reports/archive?period=${report.period}&file=${encodeURIComponent(report.filename)}`);
+      const data = await response.json();
+      if (response.ok) setSelectedArchive(data.report || null);
+      else setReportMessage(data.error || "저장된 보고서를 불러오지 못했습니다.");
+    } finally { setArchiveLoading(false); }
+  }
+
+  async function loadReportArchive(period: "week" | "month") {
+    setArchiveLoading(true);
+    setArchivedReports([]);
+    try {
+      const response = await fetch(`/api/reports/archive?period=${period}`);
+      const data = await response.json();
+      const reports = data.reports || [];
+      setArchivedReports(reports);
+      if (reports[0]) await loadArchivedReport(reports[0]);
+      else setSelectedArchive(null);
+    } catch {
+      setReportMessage("저장된 보고서 목록을 불러오지 못했습니다.");
+    } finally { setArchiveLoading(false); }
+  }
+
   async function openTrendReport() {
     setView("report");
     setTrendReport(null);
     setReportMessage("");
+    await loadReportArchive(reportPeriod);
   }
 
   async function changeReportPeriod(period: "week" | "month") {
     setReportPeriod(period);
     setTrendReport(null);
+    setSelectedArchive(null);
     setReportMessage("");
+    await loadReportArchive(period);
   }
 
   async function copyReport() {
-    if (!trendReport) return;
-    await navigator.clipboard.writeText(trendReport.markdown);
+    const markdown = selectedArchive?.content || trendReport?.markdown;
+    if (!markdown) return;
+    await navigator.clipboard.writeText(markdown);
     setReportMessage("보고서를 클립보드에 복사했습니다.");
   }
 
   function downloadReport() {
-    if (!trendReport) return;
-    const blob = new Blob([trendReport.markdown], { type: "text/markdown;charset=utf-8" });
+    const markdown = selectedArchive?.content || trendReport?.markdown;
+    if (!markdown) return;
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `모아_AI-NPU_${trendReport.periodLabel}_동향보고서.md`;
+    anchor.download = selectedArchive?.filename || `모아_AI-NPU_${trendReport?.periodLabel || reportPeriod}_동향보고서.md`;
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -553,14 +644,15 @@ export default function Home() {
         </section> : <section className="trend-report-workspace">
           <section className="report-toolbar">
             <div className="period-tabs"><button className={reportPeriod === "week" ? "selected" : ""} onClick={() => changeReportPeriod("week")}>주간</button><button className={reportPeriod === "month" ? "selected" : ""} onClick={() => changeReportPeriod("month")}>월간</button></div>
-            <div className="report-actions"><button onClick={() => loadTrendReport(reportPeriod)} disabled={reportLoading}>{reportLoading ? "작성 중…" : "새로 작성"}</button><button onClick={copyReport} disabled={!trendReport}>복사</button><button className="download-report" onClick={downloadReport} disabled={!trendReport}>Markdown 다운로드</button></div>
+            <div className="report-actions"><button onClick={() => loadTrendReport(reportPeriod)} disabled={reportLoading}>{reportLoading ? "작성 중…" : "새로 작성"}</button><button onClick={copyReport} disabled={!trendReport && !selectedArchive}>복사</button><button className="download-report" onClick={downloadReport} disabled={!trendReport && !selectedArchive}>Markdown 다운로드</button></div>
           </section>
+          <section className="report-archive-panel"><div className="report-archive-heading"><div><h3>{reportPeriod === "week" ? "주간" : "월간"} 보고서</h3><p>GitHub report/{reportPeriod === "week" ? "weekly" : "monthly"} 폴더에 축적된 보고서입니다.</p></div><span>{archivedReports.length}건</span></div><div className="report-archive-list">{archivedReports.map((report) => <button className={selectedArchive?.id === report.id ? "selected" : ""} key={report.id} onClick={() => loadArchivedReport(report)}><strong>{report.title}</strong><small>{report.publishedAt || report.filename}</small></button>)}{!archiveLoading && archivedReports.length === 0 && <div className="report-archive-empty">아직 저장된 {reportPeriod === "week" ? "주간" : "월간"} 보고서가 없습니다.</div>}</div></section>
           {reportMessage && <div className="discovery-message">{reportMessage}</div>}
-          {reportLoading && !trendReport ? <div className="report-loading">자동수집 자료를 읽고 보고서를 작성하고 있습니다…</div> : trendReport && <article className="trend-report">
+          {selectedArchive ? <article className="trend-report archived-trend-report"><div className="report-cover"><span className="eyebrow">MOA REPORT ARCHIVE</span><h2>{selectedArchive.title}</h2><p>{selectedArchive.publishedAt || selectedArchive.filename} · GitHub 저장본</p></div><MarkdownDocument content={selectedArchive.content} /></article> : archiveLoading ? <div className="report-loading">저장된 보고서를 불러오고 있습니다…</div> : reportLoading && !trendReport ? <div className="report-loading">자동수집 자료를 읽고 보고서를 작성하고 있습니다…</div> : trendReport && <article className="trend-report">
             <div className="report-cover"><span className="eyebrow">MOA ISSUE INTELLIGENCE</span><h2>AI·NPU {trendReport.periodLabel}<br/>이슈 중심 종합 보고서</h2><p>{new Date(trendReport.generatedAt).toLocaleString("ko-KR")} 기준 · 원자료 {trendReport.total}건 → 중복 제거 {trendReport.uniqueTotal}건 → 통합 이슈 {trendReport.issueCount}개</p></div>
             <section className="report-summary"><div className="report-heading-number">■</div><div><h3>전체 내용 요약 · {trendReport.generatedAt.slice(0, 10).replaceAll("-", ".")}</h3><p>{trendReport.overview}</p><ul>{trendReport.overviewBullets.map((item) => <li key={item}>{item}</li>)}</ul></div></section>
-            {trendReport.chapters.map((chapter) => <section className="report-section report-chapter" key={chapter.number}><div className="report-section-title"><div className="report-heading-number">{String(chapter.number).padStart(2,"0")}</div><div><h3>{chapter.title}</h3><p>{chapter.lead}</p></div><span>{chapter.sections.length}개 분석축</span></div>{chapter.sections.map((section) => <article className="report-issue" key={`${chapter.number}-${section.title}`}><h4>{section.title}</h4><p className="chapter-claim">{section.claim}</p><p className="chapter-analysis">{section.analysis}</p><div className="issue-implication"><strong>Chief AI Scientist · 정책수립자 통합 시사점</strong><p>{section.implications}</p></div>{section.metrics.length > 0 && <div className="item-metrics"><strong>핵심 수치</strong>{section.metrics.map(metric=><span key={metric}>{metric}</span>)}</div>}<details className="issue-sources"><summary>근거 {section.sources.length}건</summary><ul>{section.sources.map(source=><li key={`${source.origin}-${source.id}`}><a href={source.url||`/source/${source.id}`} target="_blank" rel="noreferrer">{source.title}</a><span>{source.publisher} · {source.createdAt.slice(0,10).replaceAll("-",".")}</span></li>)}</ul></details></article>)}</section>)}
-            <section className="report-section report-appendix"><div className="report-section-title"><div className="report-heading-number">06</div><div><h3>종합 시사점 및 실행 방향</h3><p>앞선 시장·기업·기술·정책 분석을 하나의 실행 관점으로 종합합니다.</p></div></div><h4>종합 시사점</h4><ul>{trendReport.caveats.map(item=><li key={item}>{item}</li>)}</ul><h4>우선 실행·관찰 과제</h4><ul>{trendReport.monitoring.map(item=><li key={item}>{item}</li>)}</ul></section>
+            {trendReport.chapters.map((chapter) => <section className="report-section report-chapter" key={chapter.number}><div className="report-section-title"><div className="report-heading-number">{String(chapter.number).padStart(2,"0")}</div><div><h3>{chapter.title}</h3><p>{chapter.lead}</p></div><span>{chapter.sections.length}개 분석축</span></div>{chapter.sections.map((section) => <article className="report-issue" key={`${chapter.number}-${section.title}`}><h4>{section.title}</h4><p className="chapter-claim">{section.claim}</p><p className="chapter-analysis">{section.analysis}</p><div className="issue-implication"><strong>결론 및 시사점</strong><p>{section.implications}</p></div>{section.metrics.length > 0 && <div className="item-metrics"><strong>핵심 수치</strong>{section.metrics.map(metric=><span key={metric}>{metric}</span>)}</div>}<details className="issue-sources"><summary>근거 {section.sources.length}건</summary><ul>{section.sources.map(source=><li key={`${source.origin}-${source.id}`}><a href={source.url||`/source/${source.id}`} target="_blank" rel="noreferrer">{source.title}</a><span>{source.publisher} · {source.createdAt.slice(0,10).replaceAll("-",".")}</span></li>)}</ul></details></article>)}</section>)}
+            <section className="report-section report-appendix"><div className="report-section-title"><div className="report-heading-number">06</div><div><h3>시사점 및 향후 전망</h3><p>앞선 시장·기업·기술·정책 분석을 종합해 향후 변화 방향을 제시합니다.</p></div></div><h4>종합 시사점</h4><ul>{trendReport.caveats.map(item=><li key={item}>{item}</li>)}</ul><h4>향후 관찰지표</h4><ul>{trendReport.monitoring.map(item=><li key={item}>{item}</li>)}</ul></section>
             <footer className="report-note">동일 사건의 중복 기사는 하나의 이슈로 통합했습니다. 공통 사실·수치·기업·기술 연결을 재구성한 무비용 규칙 기반 초안이므로 중요한 판단 전에는 근거 원문을 확인하세요.</footer>
           </article>}
         </section>}
