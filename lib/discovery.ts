@@ -7,9 +7,8 @@ export type SearchResult = {
 
 const INTEREST_TERMS = [
   "AI 반도체", "NPU", "인공지능 반도체", "AI 가속기", "온디바이스 AI",
-  "엣지 AI", "데이터센터", "HBM", "칩렛", "CXL", "첨단 패키징",
-  "파운드리", "팹리스", "반도체", "GPU", "LLM", "추론", "실증",
-  "컴퓨팅", "MangoBoost", "망고부스트", "퓨리오사AI", "리벨리온",
+  "엣지 AI", "AI 서버", "데이터센터 AI", "AI 추론", "GPU 가속기",
+  "MangoBoost", "망고부스트", "퓨리오사AI", "리벨리온",
   "딥엑스", "사피온", "엔비디아", "AMD", "인텔", "삼성전자", "SK하이닉스",
 ];
 
@@ -24,7 +23,7 @@ const BASE_INTEREST_QUERIES = [
   "AI accelerator market technology white paper report filetype:pdf",
 ];
 
-const TITLE_ANCHORS = ["npu", "ai 반도체", "ai semiconductor", "ai 가속기", "ai accelerator"];
+const TITLE_ANCHORS = ["npu", "ai 반도체", "인공지능 반도체", "ai semiconductor", "ai chip", "ai 가속기", "ai accelerator", "ai processor", "neural processing unit", "tpu", "trainium", "inferentia", "blackwell", "rubin", "gaudi", "mi300", "mi325", "mi350"];
 const MARKET_TERMS = ["시장규모", "시장 규모", "점유율", "매출", "출하량", "투자액", "cagr", "수요", "공급", "가격", "capacity", "demand", "revenue", "shipment", "adoption"];
 const TECH_TERMS = ["tops", "tops/w", "전력효율", "전력 효율", "추론 성능", "hbm", "칩렛", "cxl", "공정", "benchmark", "architecture", "inference"];
 const COMPANY_EVENTS = ["수주", "양산", "투자유치", "투자 유치", "공급계약", "공급 계약", "협력", "인수", "도입", "채택", "출시", "deployment", "adoption", "partnership", "launch"];
@@ -155,11 +154,12 @@ export function hostMatches(host: string, allowedHosts: readonly string[]) {
 
 function hasProcessorResearchContext(value: string) {
   const text = value.toLocaleLowerCase("ko");
-  const hardware = ["npu", "gpu", "hbm", "cxl", "반도체", "semiconductor", "ai chip", "ai processor", "processor", "accelerator", "가속기", "칩렛", "chiplet", "데이터센터", "data center", "datacenter", "컴퓨팅", "compute", "inference", "추론"]
+  const explicitAccelerator = TITLE_ANCHORS.some((term) => text.includes(term));
+  const acceleratorProduct = ["h100", "h200", "b100", "b200", "gb200", "gb300", "a100", "instinct", "groq", "cerebras", "furiosa", "warboy", "renegade", "atom", "deepx", "dx-m1", "리벨리온", "퓨리오사", "딥엑스", "사피온", "망고부스트"]
     .some((term) => text.includes(term));
-  const ai = ["ai", "인공지능", "artificial intelligence", "machine learning"].some((term) => text.includes(term));
-  const analytical = ["시장", "market", "산업", "industry", "투자", "investment", "도입", "deployment", "benchmark", "architecture", "기술", "technical"].some((term) => text.includes(term));
-  return hardware || (ai && analytical);
+  const aiWorkload = ["ai", "인공지능", "artificial intelligence", "llm", "생성형", "machine learning", "딥러닝", "inference", "추론", "training", "학습"].some((term) => text.includes(term));
+  const computeHardware = ["gpu", "가속기", "accelerator", "processor", "프로세서", "chip", "칩", "서버", "server", "데이터센터", "data center", "datacenter", "hbm", "cxl", "칩렛", "chiplet", "패키징", "packaging", "파운드리", "foundry"].some((term) => text.includes(term));
+  return explicitAccelerator || acceleratorProduct || (aiWorkload && computeHardware);
 }
 
 export function isRelevantDiscoveryResult(_query: string, title: string, summary: string) {
