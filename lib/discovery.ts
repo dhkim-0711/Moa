@@ -31,7 +31,7 @@ const COMPANY_EVENTS = ["수주", "양산", "투자유치", "투자 유치", "�
 const POLICY_TERMS = ["보도자료", "정책", "지원사업", "지원 사업", "공고", "협약식", "간담회", "장관", "정부", "부처", "실증사업", "실증 사업"];
 const REPORT_TERMS = ["이슈리포트", "이슈 리포트", "연구보고서", "산업동향", "백서", "전망 보고서", "분석 보고서", "기술 보고서", "white paper", "whitepaper", "research report", "market report", "technical report", "outlook", "case study", "benchmark", "methodology", "investor presentation"];
 const RESEARCH_HOSTS = ["oecd.org", "wipo.int", "worldbank.org", "imf.org", "stanford.edu", "kdi.re.kr", "kisdi.re.kr", "kistep.re.kr", "iitp.kr", "spri.kr", "kiet.re.kr", "kotra.or.kr", "etri.re.kr"];
-const DEEP_SOURCE_HOSTS = [...RESEARCH_HOSTS, "arxiv.org", "ieee.org", "acm.org", "semi.org", "semiconductor.org", "mlcommons.org", "semianalysis.com", "epoch.ai", "developer.nvidia.com", "research.google", "microsoft.com", "aws.amazon.com", "amd.com", "intel.com", "samsung.com", "skhynix.com", "mckinsey.com", "bcg.com", "deloitte.com", "pwc.com", "accenture.com", "idc.com", "counterpointresearch.com", "trendforce.com", "techinsights.com"];
+const DEEP_SOURCE_HOSTS = [...RESEARCH_HOSTS, "arxiv.org", "doi.org", "ieee.org", "acm.org", "semi.org", "semiconductor.org", "mlcommons.org", "semianalysis.com", "epoch.ai", "developer.nvidia.com", "research.google", "microsoft.com", "aws.amazon.com", "amd.com", "intel.com", "samsung.com", "skhynix.com", "mckinsey.com", "bcg.com", "deloitte.com", "pwc.com", "accenture.com", "idc.com", "counterpointresearch.com", "trendforce.com", "techinsights.com"];
 const NEWS_AGGREGATOR_HOSTS = ["news.google.com", "news.yahoo.com", "news.naver.com", "news.daum.net", "msn.com"];
 export const INSTITUTIONAL_REPORT_QUERIES = [
   { query: "site:spri.kr AI 반도체 보고서", hosts: ["spri.kr"] },

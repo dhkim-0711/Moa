@@ -4,6 +4,7 @@ import { blockedHosts, discoveryCandidates, discoveryTopics, sources } from "../
 import { requireAuthorized } from "../../../../lib/auth";
 import { canonicalUrl, DEEP_RESEARCH_QUERIES, depthAdjustedScore, deriveInterestProfile, fetchReadablePage, hostMatches, INSTITUTIONAL_REPORT_QUERIES, isDeepDiscoveryResult, isInstitutionalReport, isRelevantDiscoveryResult, relevanceScore, searchWeb, similarContent, similarTitle } from "../../../../lib/discovery";
 import { collectDailyDeskCandidates } from "../../../../lib/daily-desk";
+import { collectResearchSearchResults } from "../../../../lib/research-search";
 
 const DAY = 24 * 60 * 60 * 1000;
 const AUTO_SAVE_SCORE = 90;
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
   const topics = await db.select().from(discoveryTopics).where(eq(discoveryTopics.active, true));
   const blocked = new Set((await db.select().from(blockedHosts)).map((item) => item.host));
 
-  const plans = new Map<string, { query: string; labelQuery?: string; topicId: number | null; topicRowId?: number; allowedHosts?: readonly string[]; depthRequired?: boolean }>();
+  const plans = new Map<string, { query: string; labelQuery?: string; topicId: number | null; topicRowId?: number; allowedHosts?: readonly string[]; depthRequired?: boolean; presetResults?: Awaited<ReturnType<typeof collectResearchSearchResults>> }>();
   for (const topic of topics) {
     if (topic.origin === "automatic" && /(정책|지원사업|실증 사업|실증사업|정부|보도자료)/i.test(topic.query)) continue;
     if (force || !topic.lastRunAt || new Date(topic.lastRunAt).getTime() < cutoffDate.getTime()) {
@@ -41,6 +42,10 @@ export async function POST(request: Request) {
   for (const query of DEEP_RESEARCH_QUERIES) {
     plans.set(query, { query, topicId: null, depthRequired: true });
   }
+  try {
+    const researchResults = await collectResearchSearchResults(profile.terms);
+    plans.set("학술·연구자료", { query: "학술·연구자료", topicId: null, depthRequired: true, presetResults: researchResults });
+  } catch {}
   let added = 0;
   const errors: string[] = [];
   const knownCandidates = await db.select({ title: discoveryCandidates.title, url: discoveryCandidates.url }).from(discoveryCandidates);
@@ -48,10 +53,12 @@ export async function POST(request: Request) {
   const knownCandidateTitles = knownCandidates.map((item) => item.title);
   for (const plan of plans.values()) {
     try {
-      const [webResults, dailyDeskResults] = await Promise.all([
-        searchWeb(plan.query),
-        plan.allowedHosts ? Promise.resolve([]) : collectDailyDeskCandidates(plan.query),
-      ]);
+      const [webResults, dailyDeskResults] = plan.presetResults
+        ? [plan.presetResults, []]
+        : await Promise.all([
+          searchWeb(plan.query),
+          plan.allowedHosts ? Promise.resolve([]) : collectDailyDeskCandidates(plan.query),
+        ]);
       const results = [...dailyDeskResults, ...webResults];
       for (const result of results) {
         let host = "";
