@@ -642,6 +642,7 @@ export default function Home() {
           <button className={view === "discovery" ? "active" : ""} onClick={openDiscovery}><span>✦</span> 자동 수집함 <b>{candidates.length || ""}</b></button>
           <button className={view === "report" ? "active" : ""} onClick={openTrendReport}><span>▤</span> 동향 보고서</button>
           <button onClick={() => setModal("help")}><span>⌁</span> ChatGPT 연결 방법</button>
+          <a className="daily-desk-nav" href="https://dhkim-0711.github.io/daily-desk/" target="_blank" rel="noreferrer" aria-label="Daily Desk 새 탭에서 열기"><span>D</span> Daily Desk ↗</a>
         </nav>
         <div className="side-label">자료 유형</div>
         <div className="filters">
