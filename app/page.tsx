@@ -342,12 +342,11 @@ export default function Home() {
   async function loadArchivedReport(report: ArchivedReport) {
     setArchiveLoading(true);
     try {
-      const directory = reportDirectory(report.period);
-      const response = await fetch(`https://raw.githubusercontent.com/${REPORT_REPOSITORY}/${REPORT_BRANCH}/${directory}/${encodeURIComponent(report.filename)}`, { cache: "no-store" });
+      const response = await fetch(`/api/reports/archive?period=${report.period}&file=${encodeURIComponent(report.filename)}`, { cache: "no-store" });
       if (!response.ok) throw new Error("report fetch failed");
-      const content = sanitizeReportContent(await response.text());
-      const title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() || report.title;
-      setSelectedArchive({ ...report, title, content });
+      const data = await response.json() as { report?: ArchivedReport };
+      if (!data.report) throw new Error("report missing");
+      setSelectedArchive({ ...data.report, content: sanitizeReportContent(data.report.content) });
       setReportMessage("");
     } catch {
       setReportMessage("저장된 보고서를 불러오지 못했습니다.");
@@ -358,29 +357,10 @@ export default function Home() {
     setArchiveLoading(true);
     setArchivedReports([]);
     try {
-      const directory = reportDirectory(period);
-      const response = await fetch(`https://api.github.com/repos/${REPORT_REPOSITORY}/contents/${directory}?ref=${REPORT_BRANCH}`, {
-        headers: { accept: "application/vnd.github+json" },
-        cache: "no-store",
-      });
-      if (response.status === 404) {
-        setSelectedArchive(null);
-        return;
-      }
+      const response = await fetch(`/api/reports/archive?period=${period}`, { cache: "no-store" });
       if (!response.ok) throw new Error("archive fetch failed");
-      const rows = await response.json() as Array<{ name: string; type: "file" | "dir" }>;
-      const reports: ArchivedReport[] = rows
-        .filter((row) => row.type === "file" && row.name.toLowerCase().endsWith(".md") && !row.name.toLowerCase().startsWith("readme"))
-        .map((row) => ({
-          id: `${period}:${row.name}`,
-          period,
-          periodLabel: reportPeriodLabel(period),
-          title: reportTitle(row.name, period),
-          publishedAt: row.name.match(/\d{4}-\d{2}(?:-\d{2})?/)?.[0] || "",
-          filename: row.name,
-          content: "",
-        }))
-        .sort((a, b) => b.filename.localeCompare(a.filename, "ko"));
+      const data = await response.json() as { reports?: ArchivedReport[] };
+      const reports = data.reports || [];
       setArchivedReports(reports);
       if (reports[0]) {
         const latest = reportArchiveParts(reports[0]);
