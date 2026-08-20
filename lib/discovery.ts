@@ -31,7 +31,7 @@ const COMPANY_EVENTS = ["수주", "양산", "투자유치", "투자 유치", "�
 const POLICY_TERMS = ["보도자료", "정책", "지원사업", "지원 사업", "공고", "협약식", "간담회", "장관", "정부", "부처", "실증사업", "실증 사업"];
 const REPORT_TERMS = ["이슈리포트", "이슈 리포트", "연구보고서", "산업동향", "백서", "전망 보고서", "분석 보고서", "기술 보고서", "white paper", "whitepaper", "research report", "market report", "technical report", "outlook", "case study", "benchmark", "methodology", "investor presentation"];
 const RESEARCH_HOSTS = ["oecd.org", "wipo.int", "worldbank.org", "imf.org", "stanford.edu", "kdi.re.kr", "kisdi.re.kr", "kistep.re.kr", "iitp.kr", "spri.kr", "kiet.re.kr", "kotra.or.kr", "etri.re.kr"];
-const DEEP_SOURCE_HOSTS = [...RESEARCH_HOSTS, "arxiv.org", "ieee.org", "acm.org", "semi.org", "semianalysis.com", "epoch.ai", "developer.nvidia.com", "research.google", "microsoft.com", "aws.amazon.com", "amd.com", "intel.com", "samsung.com", "skhynix.com"];
+const DEEP_SOURCE_HOSTS = [...RESEARCH_HOSTS, "arxiv.org", "ieee.org", "acm.org", "semi.org", "semiconductor.org", "mlcommons.org", "semianalysis.com", "epoch.ai", "developer.nvidia.com", "research.google", "microsoft.com", "aws.amazon.com", "amd.com", "intel.com", "samsung.com", "skhynix.com", "mckinsey.com", "bcg.com", "deloitte.com", "pwc.com", "accenture.com", "idc.com", "counterpointresearch.com", "trendforce.com", "techinsights.com"];
 const NEWS_AGGREGATOR_HOSTS = ["news.google.com", "news.yahoo.com", "news.naver.com", "news.daum.net", "msn.com"];
 export const INSTITUTIONAL_REPORT_QUERIES = [
   { query: "site:spri.kr AI 반도체 보고서", hosts: ["spri.kr"] },
@@ -153,16 +153,20 @@ export function hostMatches(host: string, allowedHosts: readonly string[]) {
   return allowedHosts.some((domain) => normalized === domain || normalized.endsWith(`.${domain}`));
 }
 
-export function isRelevantDiscoveryResult(query: string, title: string, summary: string) {
-  const text = `${query} ${title} ${summary}`.toLocaleLowerCase("ko");
-  const hasAiContext = ["ai", "인공지능", "반도체", "semiconductor", "accelerator", "gpu", "npu", "hbm", "llm", "데이터센터"]
+function hasProcessorResearchContext(value: string) {
+  const text = value.toLocaleLowerCase("ko");
+  const hardware = ["npu", "gpu", "hbm", "cxl", "반도체", "semiconductor", "ai chip", "ai processor", "processor", "accelerator", "가속기", "칩렛", "chiplet", "데이터센터", "data center", "datacenter", "컴퓨팅", "compute", "inference", "추론"]
     .some((term) => text.includes(term));
+  const ai = ["ai", "인공지능", "artificial intelligence", "machine learning"].some((term) => text.includes(term));
+  const analytical = ["시장", "market", "산업", "industry", "투자", "investment", "도입", "deployment", "benchmark", "architecture", "기술", "technical"].some((term) => text.includes(term));
+  return hardware || (ai && analytical);
+}
+
+export function isRelevantDiscoveryResult(_query: string, title: string, summary: string) {
   const resultText = `${title} ${summary}`.toLocaleLowerCase("ko");
-  const resultHasAiContext = ["ai", "인공지능", "반도체", "semiconductor", "accelerator", "gpu", "npu", "hbm", "llm", "데이터센터"]
-    .some((term) => resultText.includes(term));
   const obviousNoise = ["dictionary", "wikipedia", "imdb", "calculator", "sign in", "login", "webtoon", "boots", "porn", "adult"]
     .some((term) => resultText.includes(term));
-  return !obviousNoise && (!hasAiContext || resultHasAiContext);
+  return !obviousNoise && hasProcessorResearchContext(resultText);
 }
 
 export function isDeepDiscoveryResult(title: string, summary: string, url: string) {
@@ -172,7 +176,8 @@ export function isDeepDiscoveryResult(title: string, summary: string, url: strin
   const reportSignal = REPORT_TERMS.some((term) => combined.includes(term));
   const documentSignal = /\.pdf(?:$|[?#])/i.test(url) || /(?:보고서|리포트|백서|논문|연구|분석|전망|벤치마크|아키텍처|사례연구|기술문서)/i.test(combined);
   const evidenceSignal = /(?:\d+(?:\.\d+)?\s*(?:%|억|조|달러|usd|tops(?:\/w)?|w|nm|gb\/s|tb\/s|배)|cagr|methodology|dataset|실험|측정|비교)/i.test(combined);
-  return deepHost || /.pdf(?:$|[?#])/i.test(url) || (reportSignal && (documentSignal || evidenceSignal));
+  if (!hasProcessorResearchContext(combined)) return false;
+  return deepHost || (reportSignal && (documentSignal || evidenceSignal)) || (/\.pdf(?:$|[?#])/i.test(url) && (reportSignal || evidenceSignal));
 }
 
 export function depthAdjustedScore(score: number, title: string, summary: string, url: string) {

@@ -27,11 +27,12 @@ export async function POST(request: Request) {
   const topics = await db.select().from(discoveryTopics).where(eq(discoveryTopics.active, true));
   const blocked = new Set((await db.select().from(blockedHosts)).map((item) => item.host));
 
-  const plans = new Map<string, { query: string; topicId: number | null; topicRowId?: number; allowedHosts?: readonly string[]; depthRequired?: boolean }>();
+  const plans = new Map<string, { query: string; labelQuery?: string; topicId: number | null; topicRowId?: number; allowedHosts?: readonly string[]; depthRequired?: boolean }>();
   for (const topic of topics) {
     if (topic.origin === "automatic" && /(정책|지원사업|실증 사업|실증사업|정부|보도자료)/i.test(topic.query)) continue;
     if (force || !topic.lastRunAt || new Date(topic.lastRunAt).getTime() < cutoffDate.getTime()) {
-      plans.set(topic.query, { query: topic.query, topicId: topic.id, topicRowId: topic.id, depthRequired: true });
+      const focusedQuery = `${topic.query} AI 반도체 NPU 기술 보고서 벤치마크 시장 분석`;
+      plans.set(focusedQuery, { query: focusedQuery, labelQuery: topic.query, topicId: topic.id, topicRowId: topic.id, depthRequired: true });
     }
   }
   for (const reportPlan of INSTITUTIONAL_REPORT_QUERIES) {
@@ -62,13 +63,14 @@ export async function POST(request: Request) {
         const normalizedUrl = canonicalUrl(result.url);
         if (knownCandidateUrls.has(normalizedUrl) || knownCandidateTitles.some((title) => similarTitle(title, result.title))) continue;
         const institutionalReport = Boolean(plan.allowedHosts) && isInstitutionalReport(result.title, result.summary, result.url);
-        const calculatedScore = relevanceScore(plan.query, result.title, result.summary, profile.terms);
+        const candidateQuery = plan.labelQuery || plan.query;
+        const calculatedScore = relevanceScore(candidateQuery, result.title, result.summary, profile.terms);
         const score = institutionalReport
           ? Math.max(depthAdjustedScore(calculatedScore, result.title, result.summary, result.url), /\.pdf(?:$|[?#])/i.test(result.url) ? 94 : 86)
           : depthAdjustedScore(calculatedScore, result.title, result.summary, result.url);
         const inserted = await db.insert(discoveryCandidates).values({
           topicId: plan.topicId,
-          query: plan.query,
+          query: candidateQuery,
           title: result.title,
           url: result.url,
           summary: result.summary,
