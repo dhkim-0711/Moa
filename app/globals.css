@@ -105,6 +105,7 @@ body{background:#f4f6f5;color:var(--ink);font-family:Inter,"Pretendard Variable"
 .trend-report .issue-sources li span{font-size:10px}
 .trend-report .report-appendix ul{font-size:12px}
 .trend-report .report-note{font-size:11px}
+.brand-home{width:calc(100% - 20px);border:0;background:transparent;padding:0;cursor:pointer;text-align:left}.brand-home:hover{color:#12644f}
 .archived-trend-report .markdown-document p,.archived-trend-report .md-bullet{font-size:13px}
 .archived-trend-report .markdown-document blockquote,.archived-trend-report .md-source{font-size:11px!important}
 .archived-trend-report .markdown-document table{font-size:11px}

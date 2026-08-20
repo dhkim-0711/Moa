@@ -658,7 +658,7 @@ export default function Home() {
   return (
     <main className="app-shell">
       <aside className="sidebar">
-        <div className="brand"><span className="brand-mark">M</span><span>모아</span></div>
+        <button className="brand brand-home" onClick={openLibraryHome} aria-label="자료함 초기화면으로 이동"><span className="brand-mark">M</span><span>모아</span></button>
         <a className="daily-desk-nav" href="https://dhkim-0711.github.io/daily-desk/" target="_blank" rel="noreferrer" aria-label="Daily Desk 새 탭에서 열기"><span>D</span> Daily Desk ↗</a>
         <button className="new-button" onClick={() => setModal("file")}><span>＋</span> 새 자료 추가</button>
         <nav>
