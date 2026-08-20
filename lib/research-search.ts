@@ -14,7 +14,7 @@ async function searchCrossref(query: string): Promise<SearchResult[]> {
     "query.bibliographic": query,
     filter: `from-pub-date:${cutoff}`,
     select: "DOI,title,abstract,URL,published-online,published-print,publisher,container-title",
-    rows: "12",
+    rows: "3",
     sort: "published",
     order: "desc",
   });
@@ -43,7 +43,7 @@ async function searchCrossref(query: string): Promise<SearchResult[]> {
 async function searchArxiv(query: string): Promise<SearchResult[]> {
   const terms = query.split(/\s+/).filter((term) => term.length > 2).slice(0, 6);
   const searchQuery = terms.map((term) => `all:\"${term.replace(/\"/g, "")}\"`).join(" OR ");
-  const params = new URLSearchParams({ search_query: searchQuery, start: "0", max_results: "12", sortBy: "submittedDate", sortOrder: "descending" });
+  const params = new URLSearchParams({ search_query: searchQuery, start: "0", max_results: "2", sortBy: "submittedDate", sortOrder: "descending" });
   const response = await fetch(`https://export.arxiv.org/api/query?${params}`, {
     headers: { "user-agent": "MoaKnowledge/1.0" },
   });
@@ -67,5 +67,5 @@ export async function collectResearchSearchResults(interestTerms: string[]) {
     if (urls.has(key)) return false;
     urls.add(key);
     return true;
-  });
+  }).slice(0, 4);
 }

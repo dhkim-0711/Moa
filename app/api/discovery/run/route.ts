@@ -5,6 +5,7 @@ import { requireAuthorized } from "../../../../lib/auth";
 import { canonicalUrl, DEEP_RESEARCH_QUERIES, depthAdjustedScore, deriveInterestProfile, fetchReadablePage, hostMatches, INSTITUTIONAL_REPORT_QUERIES, isDeepDiscoveryResult, isInstitutionalReport, isRelevantDiscoveryResult, relevanceScore, searchWeb, similarContent, similarTitle } from "../../../../lib/discovery";
 import { collectDailyDeskCandidates } from "../../../../lib/daily-desk";
 import { collectResearchSearchResults } from "../../../../lib/research-search";
+import { collectDirectSourceResults } from "../../../../lib/direct-sources";
 
 const DAY = 24 * 60 * 60 * 1000;
 const AUTO_SAVE_SCORE = 90;
@@ -43,8 +44,20 @@ export async function POST(request: Request) {
     plans.set(query, { query, topicId: null, depthRequired: true });
   }
   try {
+    const directSources = await collectDirectSourceResults();
+    for (const direct of directSources) {
+      plans.set(direct.label, {
+        query: direct.label,
+        topicId: null,
+        depthRequired: true,
+        allowedHosts: direct.institutional ? [new URL(direct.results[0].url).hostname] : undefined,
+        presetResults: direct.results,
+      });
+    }
+  } catch {}
+  try {
     const researchResults = await collectResearchSearchResults(profile.terms);
-    plans.set("학술·연구자료", { query: "학술·연구자료", topicId: null, depthRequired: true, presetResults: researchResults });
+    plans.set("학술자료(보조)", { query: "학술자료(보조)", topicId: null, depthRequired: true, presetResults: researchResults });
   } catch {}
   let added = 0;
   const errors: string[] = [];
