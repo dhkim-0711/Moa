@@ -63,6 +63,19 @@ function reportTitle(filename: string, period: ReportPeriod) {
   const stem = filename.replace(/\.md$/i, "").replace(/[-_]/g, " ");
   return `${stem} ${reportPeriodLabel(period)} 보고서`;
 }
+function reportArchiveParts(report: ArchivedReport) {
+  const date = report.publishedAt || report.filename;
+  const calendar = date.match(/(20\d{2})-(\d{2})(?:-(\d{2}))?/);
+  const week = date.match(/(20\d{2})[-_ ]?W(\d{1,2})/i);
+  const year = calendar?.[1] || week?.[1] || "기타";
+  const month = calendar?.[2] || "기타";
+  const slot = report.period === "day" && calendar?.[3]
+    ? `${Number(calendar[3])}일`
+    : report.period === "week"
+      ? (week ? `${Number(week[2])}주차` : calendar?.[3] ? `${Math.ceil(Number(calendar[3]) / 7)}주차 · ${Number(calendar[3])}일 기준` : report.filename)
+      : month !== "기타" ? `${Number(month)}월 보고서` : report.filename;
+  return { year, month, slot };
+}
 function sanitizeReportContent(content: string) {
   return content
     .replace(/\r\n/g, "\n")
@@ -202,6 +215,8 @@ export default function Home() {
   const [trendReport, setTrendReport] = useState<TrendReport | null>(null);
   const [archivedReports, setArchivedReports] = useState<ArchivedReport[]>([]);
   const [selectedArchive, setSelectedArchive] = useState<ArchivedReport | null>(null);
+  const [archiveYear, setArchiveYear] = useState("");
+  const [archiveMonth, setArchiveMonth] = useState("");
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportMessage, setReportMessage] = useState("");
@@ -367,7 +382,12 @@ export default function Home() {
         }))
         .sort((a, b) => b.filename.localeCompare(a.filename, "ko"));
       setArchivedReports(reports);
-      if (reports[0]) await loadArchivedReport(reports[0]);
+      if (reports[0]) {
+        const latest = reportArchiveParts(reports[0]);
+        setArchiveYear(latest.year);
+        setArchiveMonth(latest.month);
+        await loadArchivedReport(reports[0]);
+      }
       else setSelectedArchive(null);
     } catch {
       setReportMessage("저장된 보고서 목록을 불러오지 못했습니다.");
@@ -445,6 +465,12 @@ export default function Home() {
         .some((value) => String(value).toLocaleLowerCase("ko").includes(normalizedQuery));
     });
   }, [sources, filterKind, searchQuery]);
+  const archiveYears = useMemo(() => [...new Set(archivedReports.map((report) => reportArchiveParts(report).year))], [archivedReports]);
+  const archiveMonths = useMemo(() => [...new Set(archivedReports.filter((report) => reportArchiveParts(report).year === archiveYear).map((report) => reportArchiveParts(report).month))], [archivedReports, archiveYear]);
+  const archiveChoices = useMemo(() => archivedReports.filter((report) => {
+    const parts = reportArchiveParts(report);
+    return parts.year === archiveYear && parts.month === archiveMonth;
+  }), [archivedReports, archiveYear, archiveMonth]);
 
   async function saveSource(event: FormEvent) {
     event.preventDefault();
@@ -608,6 +634,16 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function openLibraryFilter(kind: "DOCUMENT" | "WEB" | "AUTO_WEB" | "MEMO") {
+    setView("library");
+    setSearchQuery("");
+    setFilterKind(kind);
+    setShowAll(true);
+    setSearchPreview(null);
+    setModal(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   async function deleteSource(source: Source) {
     if (source.id < 0) {
       setSources((items) => items.filter((item) => item.id !== source.id));
@@ -653,10 +689,10 @@ export default function Home() {
         </nav>
         <div className="side-label">자료 유형</div>
         <div className="filters">
-          <button className={filterKind === "DOCUMENT" ? "selected" : ""} onClick={() => { setFilterKind("DOCUMENT"); setShowAll(true); }}>문서 <b>{counts.documents}</b></button>
-          <button className={filterKind === "WEB" ? "selected" : ""} onClick={() => { setFilterKind("WEB"); setShowAll(true); }}>웹페이지 <b>{counts.web}</b></button>
-          <button className={filterKind === "AUTO_WEB" ? "selected" : ""} onClick={() => { setFilterKind("AUTO_WEB"); setShowAll(true); }}>자동수집 <b>{counts.automatic}</b></button>
-          <button className={filterKind === "MEMO" ? "selected" : ""} onClick={() => { setFilterKind("MEMO"); setShowAll(true); }}>메모 <b>{counts.memo}</b></button>
+          <button className={view === "library" && filterKind === "DOCUMENT" ? "selected" : ""} onClick={() => openLibraryFilter("DOCUMENT")}>문서 <b>{counts.documents}</b></button>
+          <button className={view === "library" && filterKind === "WEB" ? "selected" : ""} onClick={() => openLibraryFilter("WEB")}>웹페이지 <b>{counts.web}</b></button>
+          <button className={view === "library" && filterKind === "AUTO_WEB" ? "selected" : ""} onClick={() => openLibraryFilter("AUTO_WEB")}>자동수집 <b>{counts.automatic}</b></button>
+          <button className={view === "library" && filterKind === "MEMO" ? "selected" : ""} onClick={() => openLibraryFilter("MEMO")}>메모 <b>{counts.memo}</b></button>
         </div>
         <div className="sidebar-foot"><span className="avatar">나</span><div><strong>나의 지식 공간</strong><small>개인 전용</small></div><button onClick={logout} aria-label="로그아웃">나가기</button></div>
       </aside>
@@ -702,7 +738,7 @@ export default function Home() {
             <div className="period-tabs"><button className={reportPeriod === "day" ? "selected" : ""} onClick={() => changeReportPeriod("day")}>일일동향</button><button className={reportPeriod === "week" ? "selected" : ""} onClick={() => changeReportPeriod("week")}>주간</button><button className={reportPeriod === "month" ? "selected" : ""} onClick={() => changeReportPeriod("month")}>월간</button></div>
             <div className="report-actions">{reportPeriod !== "day" && <button onClick={() => loadTrendReport(reportPeriod)} disabled={reportLoading}>{reportLoading ? "작성 중…" : "새로 작성"}</button>}<button onClick={copyReport} disabled={!trendReport && !selectedArchive}>복사</button><button className="download-report" onClick={downloadReport} disabled={!trendReport && !selectedArchive}>Markdown 다운로드</button></div>
           </section>
-          <section className="report-archive-panel"><div className="report-archive-heading"><div><h3>{reportPeriodLabel(reportPeriod)} 보고서</h3><p>GitHub {reportDirectory(reportPeriod)} 폴더에 축적된 보고서입니다.</p></div><span>{archivedReports.length}건</span></div><div className="report-archive-list">{archivedReports.map((report) => <button className={selectedArchive?.id === report.id ? "selected" : ""} key={report.id} onClick={() => loadArchivedReport(report)}><strong>{report.title}</strong><small>{report.publishedAt || report.filename}</small></button>)}{!archiveLoading && archivedReports.length === 0 && <div className="report-archive-empty">아직 저장된 {reportPeriodLabel(reportPeriod)} 보고서가 없습니다.</div>}</div></section>
+          <section className="report-archive-panel"><div className="report-archive-heading"><div><h3>{reportPeriodLabel(reportPeriod)} 보고서</h3><p>기간을 선택해 축적된 보고서를 불러오세요.</p></div><span>{archivedReports.length}건</span></div>{archivedReports.length > 0 ? <div className="report-archive-selectors"><label><span>연도</span><select value={archiveYear} onChange={(event) => { const year = event.target.value; const first = archivedReports.find((report) => reportArchiveParts(report).year === year); setArchiveYear(year); setArchiveMonth(first ? reportArchiveParts(first).month : ""); if (first) loadArchivedReport(first); }}>{archiveYears.map((year) => <option key={year}>{year}</option>)}</select></label><label><span>월</span><select value={archiveMonth} onChange={(event) => { const month = event.target.value; const first = archivedReports.find((report) => { const parts = reportArchiveParts(report); return parts.year === archiveYear && parts.month === month; }); setArchiveMonth(month); if (first) loadArchivedReport(first); }}>{archiveMonths.map((month) => <option key={month} value={month}>{month === "기타" ? month : `${Number(month)}월`}</option>)}</select></label><label className="archive-report-select"><span>{reportPeriod === "day" ? "일자" : reportPeriod === "week" ? "주차" : "보고서"}</span><select value={selectedArchive?.id || ""} onChange={(event) => { const report = archiveChoices.find((item) => item.id === event.target.value); if (report) loadArchivedReport(report); }}>{archiveChoices.map((report) => <option value={report.id} key={report.id}>{reportArchiveParts(report).slot}</option>)}</select></label></div> : !archiveLoading && <div className="report-archive-empty">아직 저장된 {reportPeriodLabel(reportPeriod)} 보고서가 없습니다.</div>}</section>
           {reportMessage && <div className="discovery-message">{reportMessage}</div>}
           {selectedArchive ? <article className="trend-report archived-trend-report"><div className="report-cover"><span className="eyebrow">MOA REPORT ARCHIVE</span><h2>{selectedArchive.title}</h2><p>{selectedArchive.publishedAt || selectedArchive.filename} · GitHub 저장본</p></div><MarkdownDocument content={selectedArchive.content} /></article> : archiveLoading ? <div className="report-loading">저장된 보고서를 불러오고 있습니다…</div> : reportLoading && !trendReport ? <div className="report-loading">자동수집 자료를 읽고 보고서를 작성하고 있습니다…</div> : trendReport && <article className="trend-report">
             <div className="report-cover"><span className="eyebrow">MOA ISSUE INTELLIGENCE</span><h2>AI·NPU {trendReport.periodLabel}<br/>이슈 중심 종합 보고서</h2><p>{new Date(trendReport.generatedAt).toLocaleString("ko-KR")} 기준 · 원자료 {trendReport.total}건 → 중복 제거 {trendReport.uniqueTotal}건 → 통합 이슈 {trendReport.issueCount}개</p></div>
