@@ -636,13 +636,13 @@ export default function Home() {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">M</span><span>모아</span></div>
+        <a className="daily-desk-nav" href="https://dhkim-0711.github.io/daily-desk/" target="_blank" rel="noreferrer" aria-label="Daily Desk 새 탭에서 열기"><span>D</span> Daily Desk ↗</a>
         <button className="new-button" onClick={() => setModal("file")}><span>＋</span> 새 자료 추가</button>
         <nav>
           <button className={view === "library" ? "active" : ""} onClick={openLibraryHome}><span>▦</span> 자료함 <b>{counts.all}</b></button>
           <button className={view === "discovery" ? "active" : ""} onClick={openDiscovery}><span>✦</span> 자동 수집함 <b>{candidates.length || ""}</b></button>
           <button className={view === "report" ? "active" : ""} onClick={openTrendReport}><span>▤</span> 동향 보고서</button>
           <button onClick={() => setModal("help")}><span>⌁</span> ChatGPT 연결 방법</button>
-          <a className="daily-desk-nav" href="https://dhkim-0711.github.io/daily-desk/" target="_blank" rel="noreferrer" aria-label="Daily Desk 새 탭에서 열기"><span>D</span> Daily Desk ↗</a>
         </nav>
         <div className="side-label">자료 유형</div>
         <div className="filters">
@@ -662,16 +662,16 @@ export default function Home() {
             <div><span className="eyebrow">PERSONAL KNOWLEDGE BASE</span><h2>생각의 재료를<br/><em>한곳에 모으세요.</em></h2><p>PDF, 워드, 엑셀, PPT, HWPX까지. 모아가 읽고 연결해<br/>당신의 다음 기획과 보고서를 돕습니다.</p></div>
             <div className="orb"><span>PDF</span><span>WORD</span><span>EXCEL</span><span>PPT</span><i>✦</i></div>
           </section>
-          <section className="quick-add">
-            <button onClick={() => setModal("file")}><i className="coral">↑</i><span><strong>파일 올리기</strong><small>PDF, 워드, 엑셀, PPT, HWPX</small></span><b>›</b></button>
-            <button onClick={() => setModal("link")}><i className="mint">⌁</i><span><strong>웹페이지 저장</strong><small>링크를 붙여넣어 저장</small></span><b>›</b></button>
-            <button onClick={() => setModal("memo")}><i className="violet">✎</i><span><strong>메모 남기기</strong><small>떠오른 생각을 바로 기록</small></span><b>›</b></button>
-          </section>
           <a className="daily-desk-banner" href="https://dhkim-0711.github.io/daily-desk/" target="_blank" rel="noreferrer" aria-label="AI 반도체 Daily Desk 새 탭에서 열기">
             <span className="daily-desk-mark">D</span>
             <span className="daily-desk-copy"><small>AI SEMICONDUCTOR DAILY INTELLIGENCE</small><strong>AI 반도체 최신 동향은 Daily Desk에서</strong><em>국내외 NPU·데이터센터·기업·시장 움직임을 매일 확인하세요.</em></span>
             <span className="daily-desk-action">Daily Desk 열기 <b>↗</b></span>
           </a>
+          <section className="quick-add">
+            <button onClick={() => setModal("file")}><i className="coral">↑</i><span><strong>파일 올리기</strong><small>PDF, 워드, 엑셀, PPT, HWPX</small></span><b>›</b></button>
+            <button onClick={() => setModal("link")}><i className="mint">⌁</i><span><strong>웹페이지 저장</strong><small>링크를 붙여넣어 저장</small></span><b>›</b></button>
+            <button onClick={() => setModal("memo")}><i className="violet">✎</i><span><strong>메모 남기기</strong><small>떠오른 생각을 바로 기록</small></span><b>›</b></button>
+          </section>
           <div className="library-search"><span>⌕</span><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="모아와 Daily Desk에서 함께 검색" aria-label="통합 자료 검색" />{searchQuery && <button onClick={() => setSearchQuery("")} aria-label="검색어 지우기">×</button>}</div>
           <div className="section-title"><div><h3>{searchQuery ? "통합 검색 결과" : filterKind !== "ALL" ? `${filterKind === "DOCUMENT" ? "문서" : filterKind === "WEB" ? "웹페이지" : filterKind === "AUTO_WEB" ? "자동수집" : "메모"} 자료` : showAll ? "전체 자료" : "최근 자료"}</h3><span>{searchQuery ? `${unifiedResults.length}개 · 모아 + Daily Desk` : `${visibleSources.length}개의 자료`}</span></div><button onClick={() => { if (searchQuery) setSearchQuery(""); else if (filterKind !== "ALL") setFilterKind("ALL"); else setShowAll((value) => !value); }}>{searchQuery ? "검색 지우기" : filterKind !== "ALL" ? "필터 해제" : showAll ? "최근 자료만 보기" : "전체 보기 →"}</button></div>
           {searchQuery ? <section className="unified-search-results">
