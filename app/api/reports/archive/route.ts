@@ -8,17 +8,24 @@ type GitHubContent = {
   type: "file" | "dir";
 };
 
-function validPeriod(value: string | null): value is "week" | "month" {
-  return value === "week" || value === "month";
+type ReportPeriod = "day" | "week" | "month";
+
+function validPeriod(value: string | null): value is ReportPeriod {
+  return value === "day" || value === "week" || value === "month";
 }
 
-function reportDirectory(period: "week" | "month") {
+function reportDirectory(period: ReportPeriod) {
+  if (period === "day") return "report/daily";
   return period === "week" ? "report/weekly" : "report/monthly";
 }
 
-function titleFromFilename(filename: string, period: "week" | "month") {
+function periodLabel(period: ReportPeriod) {
+  return period === "day" ? "일일동향" : period === "week" ? "주간" : "월간";
+}
+
+function titleFromFilename(filename: string, period: ReportPeriod) {
   const stem = filename.replace(/\.md$/i, "").replace(/[-_]/g, " ");
-  return `${stem} ${period === "week" ? "주간" : "월간"} 동향보고서`;
+  return `${stem} ${periodLabel(period)} 보고서`;
 }
 
 function sanitizeReportContent(content: string) {
@@ -31,7 +38,7 @@ function sanitizeReportContent(content: string) {
 export async function GET(request: NextRequest) {
   const periodParam = request.nextUrl.searchParams.get("period");
   if (!validPeriod(periodParam)) {
-    return NextResponse.json({ error: "period는 week 또는 month여야 합니다." }, { status: 400 });
+    return NextResponse.json({ error: "period는 day, week 또는 month여야 합니다." }, { status: 400 });
   }
 
   const filename = request.nextUrl.searchParams.get("file");
@@ -46,7 +53,7 @@ export async function GET(request: NextRequest) {
     if (!response.ok) return NextResponse.json({ error: "보고서를 찾지 못했습니다." }, { status: response.status });
     const content = sanitizeReportContent(await response.text());
     const title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() || titleFromFilename(filename, periodParam);
-    return NextResponse.json({ report: { id: `${periodParam}:${filename}`, period: periodParam, periodLabel: periodParam === "week" ? "주간" : "월간", title, publishedAt: filename.match(/\d{4}-\d{2}(?:-\d{2})?/)?.[0] || "", filename, content } });
+    return NextResponse.json({ report: { id: `${periodParam}:${filename}`, period: periodParam, periodLabel: periodLabel(periodParam), title, publishedAt: filename.match(/\d{4}-\d{2}(?:-\d{2})?/)?.[0] || "", filename, content } });
   }
 
   const apiUrl = `https://api.github.com/repos/${REPOSITORY}/contents/${directory}?ref=${BRANCH}`;
@@ -57,7 +64,7 @@ export async function GET(request: NextRequest) {
   const rows = await response.json() as GitHubContent[];
   const reports = rows
     .filter((row) => row.type === "file" && row.name.toLowerCase().endsWith(".md") && !row.name.toLowerCase().startsWith("readme"))
-    .map((row) => ({ id: `${periodParam}:${row.name}`, period: periodParam, periodLabel: periodParam === "week" ? "주간" : "월간", title: titleFromFilename(row.name, periodParam), publishedAt: row.name.match(/\d{4}-\d{2}(?:-\d{2})?/)?.[0] || "", filename: row.name, content: "" }))
+    .map((row) => ({ id: `${periodParam}:${row.name}`, period: periodParam, periodLabel: periodLabel(periodParam), title: titleFromFilename(row.name, periodParam), publishedAt: row.name.match(/\d{4}-\d{2}(?:-\d{2})?/)?.[0] || "", filename: row.name, content: "" }))
     .sort((a, b) => b.filename.localeCompare(a.filename, "ko"));
   return NextResponse.json({ reports });
 }
