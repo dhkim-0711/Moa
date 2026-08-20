@@ -664,7 +664,7 @@ export default function Home() {
           </section>
           <a className="daily-desk-banner" href="https://dhkim-0711.github.io/daily-desk/" target="_blank" rel="noreferrer" aria-label="AI 반도체 Daily Desk 새 탭에서 열기">
             <span className="daily-desk-mark">D</span>
-            <span className="daily-desk-copy"><small>AI SEMICONDUCTOR DAILY INTELLIGENCE</small><strong>AI 반도체 최신 동향은 Daily Desk에서</strong><em>국내외 NPU·데이터센터·기업·시장 움직임을 매일 확인하세요.</em></span>
+            <span className="daily-desk-copy"><small>AI PROCESSOR DAILY DESK</small><strong>AI 반도체 최신 동향은 Daily Desk에서</strong><em>국내외 NPU·데이터센터·기업·시장 움직임을 매일 확인하세요.</em></span>
             <span className="daily-desk-action">Daily Desk 열기 <b>↗</b></span>
           </a>
           <section className="quick-add">
