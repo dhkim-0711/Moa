@@ -2,7 +2,7 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { blockedHosts, discoveryCandidates, discoveryTopics, sources } from "../../../../db/schema";
 import { requireAuthorized } from "../../../../lib/auth";
-import { canonicalUrl, deriveInterestProfile, fetchReadablePage, hostMatches, INSTITUTIONAL_REPORT_QUERIES, isInstitutionalReport, isRelevantDiscoveryResult, relevanceScore, searchWeb, similarContent, similarTitle } from "../../../../lib/discovery";
+import { canonicalUrl, DEEP_RESEARCH_QUERIES, depthAdjustedScore, deriveInterestProfile, fetchReadablePage, hostMatches, INSTITUTIONAL_REPORT_QUERIES, isDeepDiscoveryResult, isInstitutionalReport, isRelevantDiscoveryResult, relevanceScore, searchWeb, similarContent, similarTitle } from "../../../../lib/discovery";
 import { collectDailyDeskCandidates } from "../../../../lib/daily-desk";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -27,15 +27,18 @@ export async function POST(request: Request) {
   const topics = await db.select().from(discoveryTopics).where(eq(discoveryTopics.active, true));
   const blocked = new Set((await db.select().from(blockedHosts)).map((item) => item.host));
 
-  const plans = new Map<string, { query: string; topicId: number | null; topicRowId?: number; allowedHosts?: readonly string[] }>();
+  const plans = new Map<string, { query: string; topicId: number | null; topicRowId?: number; allowedHosts?: readonly string[]; depthRequired?: boolean }>();
   for (const topic of topics) {
     if (topic.origin === "automatic" && /(정책|지원사업|실증 사업|실증사업|정부|보도자료)/i.test(topic.query)) continue;
     if (force || !topic.lastRunAt || new Date(topic.lastRunAt).getTime() < cutoffDate.getTime()) {
-      plans.set(topic.query, { query: topic.query, topicId: topic.id, topicRowId: topic.id });
+      plans.set(topic.query, { query: topic.query, topicId: topic.id, topicRowId: topic.id, depthRequired: true });
     }
   }
   for (const reportPlan of INSTITUTIONAL_REPORT_QUERIES) {
-    plans.set(reportPlan.query, { query: reportPlan.query, topicId: null, allowedHosts: reportPlan.hosts });
+    plans.set(reportPlan.query, { query: reportPlan.query, topicId: null, allowedHosts: reportPlan.hosts, depthRequired: true });
+  }
+  for (const query of DEEP_RESEARCH_QUERIES) {
+    plans.set(query, { query, topicId: null, depthRequired: true });
   }
   let added = 0;
   const errors: string[] = [];
@@ -46,7 +49,7 @@ export async function POST(request: Request) {
     try {
       const [webResults, dailyDeskResults] = await Promise.all([
         searchWeb(plan.query),
-        collectDailyDeskCandidates(plan.query),
+        plan.allowedHosts ? Promise.resolve([]) : collectDailyDeskCandidates(plan.query),
       ]);
       const results = [...dailyDeskResults, ...webResults];
       for (const result of results) {
@@ -55,11 +58,14 @@ export async function POST(request: Request) {
         if (blocked.has(host)) continue;
         if (plan.allowedHosts && !hostMatches(host, plan.allowedHosts)) continue;
         if (!isRelevantDiscoveryResult(plan.query, result.title, result.summary)) continue;
+        if (plan.depthRequired && !isDeepDiscoveryResult(result.title, result.summary, result.url)) continue;
         const normalizedUrl = canonicalUrl(result.url);
         if (knownCandidateUrls.has(normalizedUrl) || knownCandidateTitles.some((title) => similarTitle(title, result.title))) continue;
         const institutionalReport = Boolean(plan.allowedHosts) && isInstitutionalReport(result.title, result.summary, result.url);
         const calculatedScore = relevanceScore(plan.query, result.title, result.summary, profile.terms);
-        const score = institutionalReport ? Math.max(calculatedScore, /\.pdf(?:$|[?#])/i.test(result.url) ? 92 : 84) : calculatedScore;
+        const score = institutionalReport
+          ? Math.max(depthAdjustedScore(calculatedScore, result.title, result.summary, result.url), /\.pdf(?:$|[?#])/i.test(result.url) ? 94 : 86)
+          : depthAdjustedScore(calculatedScore, result.title, result.summary, result.url);
         const inserted = await db.insert(discoveryCandidates).values({
           topicId: plan.topicId,
           query: plan.query,
@@ -85,14 +91,12 @@ export async function POST(request: Request) {
     }
   }
 
-  const previouslyHigh = await db.select().from(discoveryCandidates)
-    .where(and(
-      eq(discoveryCandidates.status, "pending"),
-      gte(discoveryCandidates.relevance, AUTO_SAVE_SCORE),
-    ))
-    .limit(100);
-  for (const candidate of previouslyHigh) {
-    const recalculated = relevanceScore(candidate.query, candidate.title, candidate.summary || "", profile.terms);
+  const pendingCandidates = await db.select().from(discoveryCandidates)
+    .where(eq(discoveryCandidates.status, "pending"))
+    .orderBy(desc(discoveryCandidates.id))
+    .limit(500);
+  for (const candidate of pendingCandidates) {
+    const recalculated = depthAdjustedScore(relevanceScore(candidate.query, candidate.title, candidate.summary || "", profile.terms), candidate.title, candidate.summary || "", candidate.url);
     if (recalculated !== candidate.relevance) {
       await db.update(discoveryCandidates).set({ relevance: recalculated })
         .where(eq(discoveryCandidates.id, candidate.id));

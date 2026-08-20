@@ -29,8 +29,10 @@ const MARKET_TERMS = ["시장규모", "시장 규모", "점유율", "매출", "�
 const TECH_TERMS = ["tops", "tops/w", "전력효율", "전력 효율", "추론 성능", "hbm", "칩렛", "cxl", "공정", "benchmark", "architecture", "inference"];
 const COMPANY_EVENTS = ["수주", "양산", "투자유치", "투자 유치", "공급계약", "공급 계약", "협력", "인수", "도입", "채택", "출시", "deployment", "adoption", "partnership", "launch"];
 const POLICY_TERMS = ["보도자료", "정책", "지원사업", "지원 사업", "공고", "협약식", "간담회", "장관", "정부", "부처", "실증사업", "실증 사업"];
-const REPORT_TERMS = ["이슈리포트", "이슈 리포트", "연구보고서", "산업동향", "백서", "전망 보고서", "white paper", "research report", "market report", "outlook"];
+const REPORT_TERMS = ["이슈리포트", "이슈 리포트", "연구보고서", "산업동향", "백서", "전망 보고서", "분석 보고서", "기술 보고서", "white paper", "whitepaper", "research report", "market report", "technical report", "outlook", "case study", "benchmark", "methodology", "investor presentation"];
 const RESEARCH_HOSTS = ["oecd.org", "wipo.int", "worldbank.org", "imf.org", "stanford.edu", "kdi.re.kr", "kisdi.re.kr", "kistep.re.kr", "iitp.kr", "spri.kr", "kiet.re.kr", "kotra.or.kr", "etri.re.kr"];
+const DEEP_SOURCE_HOSTS = [...RESEARCH_HOSTS, "arxiv.org", "ieee.org", "acm.org", "semi.org", "semianalysis.com", "epoch.ai", "developer.nvidia.com", "research.google", "microsoft.com", "aws.amazon.com", "amd.com", "intel.com", "samsung.com", "skhynix.com"];
+const NEWS_AGGREGATOR_HOSTS = ["news.google.com", "news.yahoo.com", "news.naver.com", "news.daum.net", "msn.com"];
 export const INSTITUTIONAL_REPORT_QUERIES = [
   { query: "site:spri.kr AI 반도체 보고서", hosts: ["spri.kr"] },
   { query: "site:iitp.kr AI 반도체 주간기술동향", hosts: ["iitp.kr"] },
@@ -42,6 +44,13 @@ export const INSTITUTIONAL_REPORT_QUERIES = [
   { query: "site:oecd.org artificial intelligence semiconductor report", hosts: ["oecd.org"] },
   { query: "site:wipo.int artificial intelligence semiconductor report", hosts: ["wipo.int"] },
   { query: "site:hai.stanford.edu AI Index report hardware industry", hosts: ["hai.stanford.edu"] },
+] as const;
+export const DEEP_RESEARCH_QUERIES = [
+  "AI accelerator market outlook methodology report PDF 2026",
+  "AI semiconductor benchmark architecture technical paper PDF 2026",
+  "NPU enterprise deployment case study total cost ownership",
+  "HBM AI accelerator supply demand investor presentation 2026",
+  "AI processor inference performance efficiency benchmark whitepaper",
 ] as const;
 const COMPANY_TERMS = [
   "mangoboost", "망고부스트", "퓨리오사ai", "리벨리온", "딥엑스", "사피온",
@@ -154,6 +163,25 @@ export function isRelevantDiscoveryResult(query: string, title: string, summary:
   const obviousNoise = ["dictionary", "wikipedia", "imdb", "calculator", "sign in", "login", "webtoon", "boots", "porn", "adult"]
     .some((term) => resultText.includes(term));
   return !obviousNoise && (!hasAiContext || resultHasAiContext);
+}
+
+export function isDeepDiscoveryResult(title: string, summary: string, url: string) {
+  const combined = `${title} ${summary}`.toLocaleLowerCase("ko");
+  let host = ""; try { host = new URL(url).hostname.replace(/^www\./, "").toLowerCase(); } catch {}
+  const deepHost = DEEP_SOURCE_HOSTS.some((domain) => host === domain || host.endsWith(`.${domain}`));
+  const reportSignal = REPORT_TERMS.some((term) => combined.includes(term));
+  const documentSignal = /\.pdf(?:$|[?#])/i.test(url) || /(?:보고서|리포트|백서|논문|연구|분석|전망|벤치마크|아키텍처|사례연구|기술문서)/i.test(combined);
+  const evidenceSignal = /(?:\d+(?:\.\d+)?\s*(?:%|억|조|달러|usd|tops(?:\/w)?|w|nm|gb\/s|tb\/s|배)|cagr|methodology|dataset|실험|측정|비교)/i.test(combined);
+  return deepHost || /.pdf(?:$|[?#])/i.test(url) || (reportSignal && (documentSignal || evidenceSignal));
+}
+
+export function depthAdjustedScore(score: number, title: string, summary: string, url: string) {
+  const deep = isDeepDiscoveryResult(title, summary, url);
+  let host = ""; try { host = new URL(url).hostname.replace(/^www\./, "").toLowerCase(); } catch {}
+  const newsAggregator = NEWS_AGGREGATOR_HOSTS.some((domain) => host === domain || host.endsWith(`.${domain}`));
+  if (!deep) return Math.min(69, score);
+  if (newsAggregator) return Math.min(79, Math.max(70, score));
+  return Math.min(99, Math.max(78, score + 5));
 }
 
 export function similarTitle(left: string, right: string) {
