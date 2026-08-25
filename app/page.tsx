@@ -368,16 +368,19 @@ export default function Home() {
     setArchiveLoading(true);
     setArchivedReports([]);
     try {
-      const response = await fetch(`/api/reports/archive?period=${period}`, { cache: "no-store" });
+      const response = await fetch(`/api/reports/archive?period=${period}&latest=1`, { cache: "no-store" });
       if (!response.ok) throw new Error("archive fetch failed");
-      const data = await response.json() as { reports?: ArchivedReport[] };
+      const data = await response.json() as { reports?: ArchivedReport[]; latest?: ArchivedReport | null };
       const reports = data.reports || [];
       setArchivedReports(reports);
       if (reports[0]) {
         const latest = reportArchiveParts(reports[0]);
         setArchiveYear(latest.year);
         setArchiveMonth(latest.month);
-        await loadArchivedReport(reports[0]);
+        if (data.latest) {
+          setSelectedArchive({ ...data.latest, content: sanitizeReportContent(data.latest.content) });
+          setActiveReportHighlight("");
+        }
       }
       else setSelectedArchive(null);
     } catch {
@@ -651,7 +654,6 @@ export default function Home() {
     setReportPeriod(report.period);
     setTrendReport(null);
     setSelectedArchive(null);
-    await loadReportArchive(report.period);
     await loadArchivedReport(report, reportSearch.trim());
   }
 

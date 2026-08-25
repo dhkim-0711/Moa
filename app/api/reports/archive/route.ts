@@ -10,9 +10,14 @@ type GitHubContent = {
 
 type ReportPeriod = "day" | "week" | "month";
 type SearchableReport = { period: ReportPeriod; filename: string; content: string };
+type ArchivedReportRecord = { id: string; period: ReportPeriod; periodLabel: string; title: string; publishedAt: string; filename: string; content: string };
 
 let searchCache: { loadedAt: number; reports: SearchableReport[] } | null = null;
 const SEARCH_CACHE_MS = 15 * 60 * 1000;
+const LIST_CACHE_MS = 60 * 1000;
+const CONTENT_CACHE_MS = 2 * 60 * 1000;
+const listCache = new Map<ReportPeriod, { loadedAt: number; reports: ArchivedReportRecord[] }>();
+const contentCache = new Map<string, { loadedAt: number; report: ArchivedReportRecord }>();
 
 function validPeriod(value: string | null): value is ReportPeriod {
   return value === "day" || value === "week" || value === "month";
@@ -39,29 +44,54 @@ function sanitizeReportContent(content: string) {
     .trimEnd();
 }
 
+function reportMeta(period: ReportPeriod, filename: string): ArchivedReportRecord {
+  return { id: `${period}:${filename}`, period, periodLabel: periodLabel(period), title: titleFromFilename(filename, period), publishedAt: filename.match(/\d{4}-\d{2}(?:-\d{2})?/)?.[0] || "", filename, content: "" };
+}
+
+async function listReports(period: ReportPeriod) {
+  const cached = listCache.get(period);
+  if (cached && Date.now() - cached.loadedAt < LIST_CACHE_MS) return cached.reports;
+  const directory = reportDirectory(period);
+  const response = await fetch(`https://api.github.com/repos/${REPOSITORY}/contents/${directory}?ref=${BRANCH}`, {
+    headers: { accept: "application/vnd.github+json", "user-agent": "moa-report-archive" },
+    cache: "no-store",
+  });
+  if (response.status === 404) return [];
+  if (!response.ok) throw new Error(`GitHub list ${response.status}`);
+  const rows = await response.json() as GitHubContent[];
+  const reports = rows.filter((row) => row.type === "file" && row.name.toLowerCase().endsWith(".md") && !row.name.toLowerCase().startsWith("readme"))
+    .map((row) => reportMeta(period, row.name))
+    .sort((a, b) => b.filename.localeCompare(a.filename, "ko"));
+  listCache.set(period, { loadedAt: Date.now(), reports });
+  return reports;
+}
+
+async function loadReport(period: ReportPeriod, filename: string) {
+  const key = `${period}:${filename}`;
+  const cached = contentCache.get(key);
+  if (cached && Date.now() - cached.loadedAt < CONTENT_CACHE_MS) return cached.report;
+  const rawUrl = `https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}/${reportDirectory(period)}/${encodeURIComponent(filename)}`;
+  const response = await fetch(rawUrl, { headers: { "user-agent": "moa-report-archive" }, cache: "no-store" });
+  if (!response.ok) throw new Error(`GitHub report ${response.status}`);
+  const content = sanitizeReportContent(await response.text());
+  const meta = reportMeta(period, filename);
+  const report = { ...meta, title: content.match(/^#\s+(.+)$/m)?.[1]?.trim() || meta.title, content };
+  contentCache.set(key, { loadedAt: Date.now(), report });
+  return report;
+}
+
 async function searchableReports() {
   if (searchCache && Date.now() - searchCache.loadedAt < SEARCH_CACHE_MS) return searchCache.reports;
   const periods: ReportPeriod[] = ["day", "week", "month"];
-  const listed = await Promise.all(periods.map(async (period) => {
-    const directory = reportDirectory(period);
-    const response = await fetch(`https://api.github.com/repos/${REPOSITORY}/contents/${directory}?ref=${BRANCH}`, {
-      headers: { accept: "application/vnd.github+json", "user-agent": "moa-report-search" },
-      cache: "no-store",
-    });
-    if (response.status === 404) return [];
-    if (!response.ok) throw new Error(`GitHub list ${response.status}`);
-    const rows = await response.json() as GitHubContent[];
-    return rows.filter((row) => row.type === "file" && row.name.toLowerCase().endsWith(".md") && !row.name.toLowerCase().startsWith("readme"))
-      .map((row) => ({ period, filename: row.name }));
-  }));
+  const listed = await Promise.all(periods.map(async (period) => (await listReports(period)).map((report) => ({ period, filename: report.filename }))));
   const files = listed.flat().sort((a, b) => b.filename.localeCompare(a.filename, "ko")).slice(0, 250);
   const reports: SearchableReport[] = [];
   for (let index = 0; index < files.length; index += 12) {
     const batch = await Promise.all(files.slice(index, index + 12).map(async (file) => {
-      const url = `https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}/${reportDirectory(file.period)}/${encodeURIComponent(file.filename)}`;
-      const response = await fetch(url, { headers: { "user-agent": "moa-report-search" }, cache: "no-store" });
-      if (!response.ok) return null;
-      return { ...file, content: sanitizeReportContent(await response.text()) };
+      try {
+        const report = await loadReport(file.period, file.filename);
+        return { ...file, content: report.content };
+      } catch { return null; }
     }));
     reports.push(...batch.filter((report): report is SearchableReport => Boolean(report)));
   }
@@ -105,29 +135,20 @@ export async function GET(request: NextRequest) {
   }
 
   const filename = request.nextUrl.searchParams.get("file");
-  const directory = reportDirectory(periodParam);
 
   if (filename) {
     if (!/^[0-9A-Za-z가-힣._-]+\.md$/.test(filename)) {
       return NextResponse.json({ error: "올바르지 않은 파일명입니다." }, { status: 400 });
     }
-    const rawUrl = `https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}/${directory}/${encodeURIComponent(filename)}`;
-    const response = await fetch(rawUrl, { headers: { "user-agent": "moa-report-archive" }, cache: "no-store" });
-    if (!response.ok) return NextResponse.json({ error: "보고서를 찾지 못했습니다." }, { status: response.status });
-    const content = sanitizeReportContent(await response.text());
-    const title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() || titleFromFilename(filename, periodParam);
-    return NextResponse.json({ report: { id: `${periodParam}:${filename}`, period: periodParam, periodLabel: periodLabel(periodParam), title, publishedAt: filename.match(/\d{4}-\d{2}(?:-\d{2})?/)?.[0] || "", filename, content } });
+    try { return NextResponse.json({ report: await loadReport(periodParam, filename) }); }
+    catch { return NextResponse.json({ error: "보고서를 찾지 못했습니다." }, { status: 404 }); }
   }
 
-  const apiUrl = `https://api.github.com/repos/${REPOSITORY}/contents/${directory}?ref=${BRANCH}`;
-  const response = await fetch(apiUrl, { headers: { accept: "application/vnd.github+json", "user-agent": "moa-report-archive" }, cache: "no-store" });
-  if (response.status === 404) return NextResponse.json({ reports: [] });
-  if (!response.ok) return NextResponse.json({ error: "보고서 목록을 불러오지 못했습니다." }, { status: response.status });
-
-  const rows = await response.json() as GitHubContent[];
-  const reports = rows
-    .filter((row) => row.type === "file" && row.name.toLowerCase().endsWith(".md") && !row.name.toLowerCase().startsWith("readme"))
-    .map((row) => ({ id: `${periodParam}:${row.name}`, period: periodParam, periodLabel: periodLabel(periodParam), title: titleFromFilename(row.name, periodParam), publishedAt: row.name.match(/\d{4}-\d{2}(?:-\d{2})?/)?.[0] || "", filename: row.name, content: "" }))
-    .sort((a, b) => b.filename.localeCompare(a.filename, "ko"));
-  return NextResponse.json({ reports });
+  try {
+    const reports = await listReports(periodParam);
+    const latest = request.nextUrl.searchParams.get("latest") === "1" && reports[0] ? await loadReport(periodParam, reports[0].filename) : null;
+    return NextResponse.json({ reports, latest });
+  } catch {
+    return NextResponse.json({ error: "보고서 목록을 불러오지 못했습니다." }, { status: 502 });
+  }
 }
