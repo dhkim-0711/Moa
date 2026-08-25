@@ -146,24 +146,28 @@ function highlighted(text: string, query: string): ReactNode[] {
   return result;
 }
 
-function markdownInline(text: string, keyPrefix: string): ReactNode[] {
+function markdownInline(text: string, keyPrefix: string, highlightQuery = ""): ReactNode[] {
   const nodes: ReactNode[] = [];
+  const pushText = (value: string, position: number) => {
+    if (!value) return;
+    nodes.push(highlightQuery ? <span key={`${keyPrefix}-text-${position}`}>{highlighted(value, highlightQuery)}</span> : value);
+  };
   const pattern = /(\[[^\]]+\]\(https?:\/\/[^)]+\)|\*\*[^*]+\*\*)/g;
   let cursor = 0;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text))) {
-    if (match.index > cursor) nodes.push(text.slice(cursor, match.index));
+    if (match.index > cursor) pushText(text.slice(cursor, match.index), cursor);
     const token = match[0];
     const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
-    if (link) nodes.push(<a key={`${keyPrefix}-${match.index}`} href={link[2]} target="_blank" rel="noreferrer">{link[1]}</a>);
-    else nodes.push(<strong key={`${keyPrefix}-${match.index}`}>{token.slice(2, -2)}</strong>);
+    if (link) nodes.push(<a key={`${keyPrefix}-${match.index}`} href={link[2]} target="_blank" rel="noreferrer">{highlightQuery ? highlighted(link[1], highlightQuery) : link[1]}</a>);
+    else nodes.push(<strong key={`${keyPrefix}-${match.index}`}>{highlightQuery ? highlighted(token.slice(2, -2), highlightQuery) : token.slice(2, -2)}</strong>);
     cursor = pattern.lastIndex;
   }
-  if (cursor < text.length) nodes.push(text.slice(cursor));
+  if (cursor < text.length) pushText(text.slice(cursor), cursor);
   return nodes.length ? nodes : [text];
 }
 
-function MarkdownDocument({ content }: { content: string }) {
+function MarkdownDocument({ content, highlightQuery = "" }: { content: string; highlightQuery?: string }) {
   const lines = sanitizeReportContent(content).split("\n");
   const nodes: ReactNode[] = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -176,20 +180,20 @@ function MarkdownDocument({ content }: { content: string }) {
         index += 1;
       }
       index -= 1;
-      nodes.push(<div className="md-table-wrap" key={`table-${index}`}><table><thead><tr>{rows[0]?.map((cell, cellIndex) => <th key={cellIndex}>{markdownInline(cell, `th-${index}-${cellIndex}`)}</th>)}</tr></thead><tbody>{rows.slice(1).map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{markdownInline(cell, `td-${index}-${rowIndex}-${cellIndex}`)}</td>)}</tr>)}</tbody></table></div>);
+      nodes.push(<div className="md-table-wrap" key={`table-${index}`}><table><thead><tr>{rows[0]?.map((cell, cellIndex) => <th key={cellIndex}>{markdownInline(cell, `th-${index}-${cellIndex}`, highlightQuery)}</th>)}</tr></thead><tbody>{rows.slice(1).map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{markdownInline(cell, `td-${index}-${rowIndex}-${cellIndex}`, highlightQuery)}</td>)}</tr>)}</tbody></table></div>);
       continue;
     }
     const heading = line.match(/^(#{1,3})\s+(.+)$/);
     if (heading) {
-      const children = markdownInline(heading[2], `heading-${index}`);
+      const children = markdownInline(heading[2], `heading-${index}`, highlightQuery);
       nodes.push(heading[1].length === 1 ? <h1 key={index}>{children}</h1> : heading[1].length === 2 ? <h2 key={index}>{children}</h2> : <h3 key={index}>{children}</h3>);
       continue;
     }
     if (/^---+$/.test(line.trim())) { nodes.push(<hr key={index} />); continue; }
-    if (/^\s*-\s+/.test(line)) { nodes.push(<div className={line.startsWith("  ") ? "md-bullet md-sub-bullet" : "md-bullet"} key={index}>{markdownInline(line.replace(/^\s*-\s+/, ""), `bullet-${index}`)}</div>); continue; }
-    if (line.startsWith("> ")) { nodes.push(<blockquote key={index}>{markdownInline(line.slice(2), `quote-${index}`)}</blockquote>); continue; }
-    if (line.startsWith("* 출처")) { nodes.push(<p className="md-source" key={index}>{markdownInline(line, `source-${index}`)}</p>); continue; }
-    nodes.push(<p key={index}>{markdownInline(line, `paragraph-${index}`)}</p>);
+    if (/^\s*-\s+/.test(line)) { nodes.push(<div className={line.startsWith("  ") ? "md-bullet md-sub-bullet" : "md-bullet"} key={index}>{markdownInline(line.replace(/^\s*-\s+/, ""), `bullet-${index}`, highlightQuery)}</div>); continue; }
+    if (line.startsWith("> ")) { nodes.push(<blockquote key={index}>{markdownInline(line.slice(2), `quote-${index}`, highlightQuery)}</blockquote>); continue; }
+    if (line.startsWith("* 출처")) { nodes.push(<p className="md-source" key={index}>{markdownInline(line, `source-${index}`, highlightQuery)}</p>); continue; }
+    nodes.push(<p key={index}>{markdownInline(line, `paragraph-${index}`, highlightQuery)}</p>);
   }
   return <div className="markdown-document">{nodes}</div>;
 }
@@ -224,6 +228,8 @@ export default function Home() {
   const [reportSearch, setReportSearch] = useState("");
   const [reportSearchResults, setReportSearchResults] = useState<ArchivedReportSearch[]>([]);
   const [reportSearchLoading, setReportSearchLoading] = useState(false);
+  const [reportSearchMode, setReportSearchMode] = useState(false);
+  const [activeReportHighlight, setActiveReportHighlight] = useState("");
   const [sources, setSources] = useState<Source[]>(seedSources);
   const [modal, setModal] = useState<"link" | "memo" | "file" | "help" | null>(null);
   const [title, setTitle] = useState("");
@@ -343,7 +349,7 @@ export default function Home() {
     } finally { setReportLoading(false); }
   }
 
-  async function loadArchivedReport(report: ArchivedReport) {
+  async function loadArchivedReport(report: ArchivedReport, highlightQuery = "") {
     setArchiveLoading(true);
     try {
       const response = await fetch(`/api/reports/archive?period=${report.period}&file=${encodeURIComponent(report.filename)}`, { cache: "no-store" });
@@ -351,6 +357,7 @@ export default function Home() {
       const data = await response.json() as { report?: ArchivedReport };
       if (!data.report) throw new Error("report missing");
       setSelectedArchive({ ...data.report, content: sanitizeReportContent(data.report.content) });
+      setActiveReportHighlight(highlightQuery);
       setReportMessage("");
     } catch {
       setReportMessage("저장된 보고서를 불러오지 못했습니다.");
@@ -380,12 +387,14 @@ export default function Home() {
 
   async function openTrendReport() {
     setView("report");
+    setReportSearchMode(false);
     setTrendReport(null);
     setReportMessage("");
     await loadReportArchive(reportPeriod);
   }
 
   async function changeReportPeriod(period: ReportPeriod) {
+    setReportSearchMode(false);
     setReportPeriod(period);
     setTrendReport(null);
     setSelectedArchive(null);
@@ -643,7 +652,7 @@ export default function Home() {
     setTrendReport(null);
     setSelectedArchive(null);
     await loadReportArchive(report.period);
-    await loadArchivedReport(report);
+    await loadArchivedReport(report, reportSearch.trim());
   }
 
   function openLibraryFilter(kind: "DOCUMENT" | "WEB" | "AUTO_WEB" | "MEMO") {
@@ -745,15 +754,15 @@ export default function Home() {
           <div className="section-title"><div><h3>수집 후보</h3><span>{candidates.length}개의 자료</span></div><small>검토 후 정식 자료함에 저장하세요.</small></div>
           <section className="candidate-list">{candidates.map((candidate) => <article key={candidate.id}><div className="candidate-score"><strong>{candidate.relevance}</strong><small>관련도</small></div><div className="candidate-copy"><span>{candidate.query} · {candidate.host}</span><h4><a href={candidate.url} target="_blank" rel="noreferrer">{candidate.title}</a></h4><p>{candidate.summary || "검색 결과에 요약이 없습니다."}</p></div><div className="candidate-actions"><button className="save-candidate" onClick={() => handleCandidate(candidate, "save")}>자료함에 저장</button><button onClick={() => handleCandidate(candidate, "dismiss")}>관심 없음</button><button onClick={() => handleCandidate(candidate, "block")}>출처 차단</button></div></article>)}{!discoveryLoading && candidates.length === 0 && <div className="empty-search"><span>✦</span><strong>아직 수집된 후보가 없습니다.</strong><small>관심 주제를 추가하고 새 자료 찾기를 실행해보세요.</small></div>}</section>
           <p className="free-search-note">무료 공개 검색 피드 기반이라 결과 범위와 안정성이 달라질 수 있습니다. 개인·비영리 용도로만 사용하세요.</p>
-        </section> : <section className="trend-report-workspace">
+        </section> : <section className={`trend-report-workspace ${reportSearchMode ? "report-search-mode" : ""}`}>
           <section className="report-toolbar">
-            <div className="report-navigation"><div className="period-tabs"><button className={reportPeriod === "day" ? "selected" : ""} onClick={() => changeReportPeriod("day")}>일일동향</button><button className={reportPeriod === "week" ? "selected" : ""} onClick={() => changeReportPeriod("week")}>주간</button><button className={reportPeriod === "month" ? "selected" : ""} onClick={() => changeReportPeriod("month")}>월간</button></div><form className="report-search" onSubmit={searchReportArchive}><span>⌕</span><input value={reportSearch} onChange={(event) => { setReportSearch(event.target.value); if (!event.target.value) setReportSearchResults([]); }} placeholder="보고서 내용 검색" aria-label="GitHub 동향보고서 검색"/><button disabled={reportSearchLoading}>{reportSearchLoading ? "검색 중" : "검색"}</button></form></div>
+            <div className="report-navigation"><div className="period-tabs"><button className={!reportSearchMode && reportPeriod === "day" ? "selected" : ""} onClick={() => changeReportPeriod("day")}>일일동향</button><button className={!reportSearchMode && reportPeriod === "week" ? "selected" : ""} onClick={() => changeReportPeriod("week")}>주간</button><button className={!reportSearchMode && reportPeriod === "month" ? "selected" : ""} onClick={() => changeReportPeriod("month")}>월간</button><button className={`report-search-tab ${reportSearchMode ? "selected" : ""}`} onClick={() => { setReportSearchMode(true); setReportMessage(""); }}>⌕ 보고서 검색</button></div></div>
             <div className="report-actions">{reportPeriod !== "day" && <button onClick={() => loadTrendReport(reportPeriod)} disabled={reportLoading}>{reportLoading ? "작성 중…" : "새로 작성"}</button>}<button onClick={copyReport} disabled={!trendReport && !selectedArchive}>복사</button><button className="download-report" onClick={downloadReport} disabled={!trendReport && !selectedArchive}>Markdown 다운로드</button></div>
           </section>
           <section className="report-archive-panel"><div className="report-archive-heading"><div><h3>{reportPeriodLabel(reportPeriod)} 보고서</h3><p>기간을 선택해 축적된 보고서를 불러오세요.</p></div><span>{archivedReports.length}건</span></div>{archivedReports.length > 0 ? <div className="report-archive-selectors"><label><span>연도</span><select value={archiveYear} onChange={(event) => { const year = event.target.value; const first = archivedReports.find((report) => reportArchiveParts(report).year === year); setArchiveYear(year); setArchiveMonth(first ? reportArchiveParts(first).month : ""); if (first) loadArchivedReport(first); }}>{archiveYears.map((year) => <option key={year}>{year}</option>)}</select></label><label><span>월</span><select value={archiveMonth} onChange={(event) => { const month = event.target.value; const first = archivedReports.find((report) => { const parts = reportArchiveParts(report); return parts.year === archiveYear && parts.month === month; }); setArchiveMonth(month); if (first) loadArchivedReport(first); }}>{archiveMonths.map((month) => <option key={month} value={month}>{month === "기타" ? month : `${Number(month)}월`}</option>)}</select></label><label className="archive-report-select"><span>{reportPeriod === "day" ? "일자" : reportPeriod === "week" ? "주차" : "보고서"}</span><select value={selectedArchive?.id || ""} onChange={(event) => { const report = archiveChoices.find((item) => item.id === event.target.value); if (report) loadArchivedReport(report); }}>{archiveChoices.map((report) => <option value={report.id} key={report.id}>{reportArchiveParts(report).slot}</option>)}</select></label></div> : !archiveLoading && <div className="report-archive-empty">아직 저장된 {reportPeriodLabel(reportPeriod)} 보고서가 없습니다.</div>}</section>
-          {reportSearchResults.length > 0 && <section className="report-search-results"><div className="report-search-summary"><strong>“{reportSearch.trim()}” 검색 결과</strong><span>{reportSearchResults.length}건</span><button onClick={() => { setReportSearch(""); setReportSearchResults([]); }}>닫기</button></div>{reportSearchResults.map((report) => <button key={report.id} onClick={() => openReportSearchResult(report)}><span>{report.periodLabel} · {report.publishedAt || report.filename}</span><strong>{report.title}</strong><p>{report.excerpt}</p></button>)}</section>}
+          {reportSearchMode && <section className="report-search-card"><div className="report-search-intro"><span>REPORT ARCHIVE SEARCH</span><h3>축적된 보고서에서 필요한 이슈를 찾으세요.</h3><p>GitHub에 저장된 일일·주간·월간 보고서의 제목과 본문 전체를 검색합니다.</p></div><form className="report-search" onSubmit={searchReportArchive}><span>⌕</span><input autoFocus value={reportSearch} onChange={(event) => { setReportSearch(event.target.value); if (!event.target.value) setReportSearchResults([]); }} placeholder="예: HBM4, 추론 가속기, 엔비디아" aria-label="GitHub 동향보고서 검색"/><button disabled={reportSearchLoading}>{reportSearchLoading ? "검색 중…" : "검색"}</button></form>{reportSearchResults.length > 0 && <div className="report-search-results"><div className="report-search-summary"><strong>“{reportSearch.trim()}” 검색 결과</strong><span>{reportSearchResults.length}건</span></div>{reportSearchResults.map((report) => <button key={report.id} onClick={() => openReportSearchResult(report)}><span>{report.periodLabel} · {report.publishedAt || report.filename}</span><strong>{report.title}</strong><p>{report.excerpt}</p></button>)}</div>}</section>}
           {reportMessage && <div className="discovery-message">{reportMessage}</div>}
-          {selectedArchive ? <article className="trend-report archived-trend-report"><div className="report-cover"><span className="eyebrow">MOA REPORT ARCHIVE</span><h2>{selectedArchive.title}</h2><p>{selectedArchive.publishedAt || selectedArchive.filename} · GitHub 저장본</p></div><MarkdownDocument content={selectedArchive.content} /></article> : archiveLoading ? <div className="report-loading">저장된 보고서를 불러오고 있습니다…</div> : reportLoading && !trendReport ? <div className="report-loading">자동수집 자료를 읽고 보고서를 작성하고 있습니다…</div> : trendReport && <article className="trend-report">
+          {selectedArchive ? <article className="trend-report archived-trend-report"><div className="report-cover"><span className="eyebrow">MOA REPORT ARCHIVE</span><h2>{selectedArchive.title}</h2><p>{selectedArchive.publishedAt || selectedArchive.filename} · GitHub 저장본</p></div><MarkdownDocument content={selectedArchive.content} highlightQuery={activeReportHighlight} /></article> : archiveLoading ? <div className="report-loading">저장된 보고서를 불러오고 있습니다…</div> : reportLoading && !trendReport ? <div className="report-loading">자동수집 자료를 읽고 보고서를 작성하고 있습니다…</div> : trendReport && <article className="trend-report">
             <div className="report-cover"><span className="eyebrow">MOA ISSUE INTELLIGENCE</span><h2>AI·NPU {trendReport.periodLabel}<br/>이슈 중심 종합 보고서</h2><p>{new Date(trendReport.generatedAt).toLocaleString("ko-KR")} 기준 · 원자료 {trendReport.total}건 → 중복 제거 {trendReport.uniqueTotal}건 → 통합 이슈 {trendReport.issueCount}개</p></div>
             <section className="report-summary"><div className="report-heading-number">■</div><div><h3>전체 내용 요약 · {trendReport.generatedAt.slice(0, 10).replaceAll("-", ".")}</h3><p>{trendReport.overview}</p><ul>{trendReport.overviewBullets.map((item) => <li key={item}>{item}</li>)}</ul></div></section>
             {trendReport.chapters.map((chapter) => <section className="report-section report-chapter" key={chapter.number}><div className="report-section-title"><div className="report-heading-number">{String(chapter.number).padStart(2,"0")}</div><div><h3>{chapter.title}</h3><p>{chapter.lead}</p></div><span>{chapter.sections.length}개 분석축</span></div>{chapter.sections.map((section) => <article className="report-issue" key={`${chapter.number}-${section.title}`}><h4>{section.title}</h4><p className="chapter-claim">{section.claim}</p><p className="chapter-analysis">{section.analysis}</p><div className="issue-implication"><strong>결론 및 시사점</strong><p>{section.implications}</p></div>{section.metrics.length > 0 && <div className="item-metrics"><strong>핵심 수치</strong>{section.metrics.map(metric=><span key={metric}>{metric}</span>)}</div>}<details className="issue-sources"><summary>근거 {section.sources.length}건</summary><ul>{section.sources.map(source=><li key={`${source.origin}-${source.id}`}><a href={source.url||`/source/${source.id}`} target="_blank" rel="noreferrer">{source.title}</a><span>{source.publisher} · {source.createdAt.slice(0,10).replaceAll("-",".")}</span></li>)}</ul></details></article>)}</section>)}
