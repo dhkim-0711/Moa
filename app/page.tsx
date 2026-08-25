@@ -46,6 +46,7 @@ type ArchivedReport = {
   filename: string;
   content: string;
 };
+type ArchivedReportSearch = ArchivedReport & { excerpt: string };
 
 const REPORT_REPOSITORY = "dhkim-0711/Moa";
 const REPORT_BRANCH = "main";
@@ -220,6 +221,9 @@ export default function Home() {
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportMessage, setReportMessage] = useState("");
+  const [reportSearch, setReportSearch] = useState("");
+  const [reportSearchResults, setReportSearchResults] = useState<ArchivedReportSearch[]>([]);
+  const [reportSearchLoading, setReportSearchLoading] = useState(false);
   const [sources, setSources] = useState<Source[]>(seedSources);
   const [modal, setModal] = useState<"link" | "memo" | "file" | "help" | null>(null);
   const [title, setTitle] = useState("");
@@ -614,6 +618,34 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  async function searchReportArchive(event: FormEvent) {
+    event.preventDefault();
+    const query = reportSearch.trim();
+    if (query.length < 2) {
+      setReportMessage("검색어를 두 글자 이상 입력해주세요.");
+      return;
+    }
+    setReportSearchLoading(true);
+    setReportMessage("");
+    try {
+      const response = await fetch(`/api/reports/archive?q=${encodeURIComponent(query)}`, { cache: "no-store" });
+      const data = await response.json() as { results?: ArchivedReportSearch[]; error?: string };
+      if (!response.ok) throw new Error(data.error || "search failed");
+      setReportSearchResults(data.results || []);
+      if (!data.results?.length) setReportMessage(`“${query}”이 포함된 보고서를 찾지 못했습니다.`);
+    } catch {
+      setReportMessage("보고서 검색에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    } finally { setReportSearchLoading(false); }
+  }
+
+  async function openReportSearchResult(report: ArchivedReportSearch) {
+    setReportPeriod(report.period);
+    setTrendReport(null);
+    setSelectedArchive(null);
+    await loadReportArchive(report.period);
+    await loadArchivedReport(report);
+  }
+
   function openLibraryFilter(kind: "DOCUMENT" | "WEB" | "AUTO_WEB" | "MEMO") {
     setView("library");
     setSearchQuery("");
@@ -715,10 +747,11 @@ export default function Home() {
           <p className="free-search-note">무료 공개 검색 피드 기반이라 결과 범위와 안정성이 달라질 수 있습니다. 개인·비영리 용도로만 사용하세요.</p>
         </section> : <section className="trend-report-workspace">
           <section className="report-toolbar">
-            <div className="period-tabs"><button className={reportPeriod === "day" ? "selected" : ""} onClick={() => changeReportPeriod("day")}>일일동향</button><button className={reportPeriod === "week" ? "selected" : ""} onClick={() => changeReportPeriod("week")}>주간</button><button className={reportPeriod === "month" ? "selected" : ""} onClick={() => changeReportPeriod("month")}>월간</button></div>
+            <div className="report-navigation"><div className="period-tabs"><button className={reportPeriod === "day" ? "selected" : ""} onClick={() => changeReportPeriod("day")}>일일동향</button><button className={reportPeriod === "week" ? "selected" : ""} onClick={() => changeReportPeriod("week")}>주간</button><button className={reportPeriod === "month" ? "selected" : ""} onClick={() => changeReportPeriod("month")}>월간</button></div><form className="report-search" onSubmit={searchReportArchive}><span>⌕</span><input value={reportSearch} onChange={(event) => { setReportSearch(event.target.value); if (!event.target.value) setReportSearchResults([]); }} placeholder="보고서 내용 검색" aria-label="GitHub 동향보고서 검색"/><button disabled={reportSearchLoading}>{reportSearchLoading ? "검색 중" : "검색"}</button></form></div>
             <div className="report-actions">{reportPeriod !== "day" && <button onClick={() => loadTrendReport(reportPeriod)} disabled={reportLoading}>{reportLoading ? "작성 중…" : "새로 작성"}</button>}<button onClick={copyReport} disabled={!trendReport && !selectedArchive}>복사</button><button className="download-report" onClick={downloadReport} disabled={!trendReport && !selectedArchive}>Markdown 다운로드</button></div>
           </section>
           <section className="report-archive-panel"><div className="report-archive-heading"><div><h3>{reportPeriodLabel(reportPeriod)} 보고서</h3><p>기간을 선택해 축적된 보고서를 불러오세요.</p></div><span>{archivedReports.length}건</span></div>{archivedReports.length > 0 ? <div className="report-archive-selectors"><label><span>연도</span><select value={archiveYear} onChange={(event) => { const year = event.target.value; const first = archivedReports.find((report) => reportArchiveParts(report).year === year); setArchiveYear(year); setArchiveMonth(first ? reportArchiveParts(first).month : ""); if (first) loadArchivedReport(first); }}>{archiveYears.map((year) => <option key={year}>{year}</option>)}</select></label><label><span>월</span><select value={archiveMonth} onChange={(event) => { const month = event.target.value; const first = archivedReports.find((report) => { const parts = reportArchiveParts(report); return parts.year === archiveYear && parts.month === month; }); setArchiveMonth(month); if (first) loadArchivedReport(first); }}>{archiveMonths.map((month) => <option key={month} value={month}>{month === "기타" ? month : `${Number(month)}월`}</option>)}</select></label><label className="archive-report-select"><span>{reportPeriod === "day" ? "일자" : reportPeriod === "week" ? "주차" : "보고서"}</span><select value={selectedArchive?.id || ""} onChange={(event) => { const report = archiveChoices.find((item) => item.id === event.target.value); if (report) loadArchivedReport(report); }}>{archiveChoices.map((report) => <option value={report.id} key={report.id}>{reportArchiveParts(report).slot}</option>)}</select></label></div> : !archiveLoading && <div className="report-archive-empty">아직 저장된 {reportPeriodLabel(reportPeriod)} 보고서가 없습니다.</div>}</section>
+          {reportSearchResults.length > 0 && <section className="report-search-results"><div className="report-search-summary"><strong>“{reportSearch.trim()}” 검색 결과</strong><span>{reportSearchResults.length}건</span><button onClick={() => { setReportSearch(""); setReportSearchResults([]); }}>닫기</button></div>{reportSearchResults.map((report) => <button key={report.id} onClick={() => openReportSearchResult(report)}><span>{report.periodLabel} · {report.publishedAt || report.filename}</span><strong>{report.title}</strong><p>{report.excerpt}</p></button>)}</section>}
           {reportMessage && <div className="discovery-message">{reportMessage}</div>}
           {selectedArchive ? <article className="trend-report archived-trend-report"><div className="report-cover"><span className="eyebrow">MOA REPORT ARCHIVE</span><h2>{selectedArchive.title}</h2><p>{selectedArchive.publishedAt || selectedArchive.filename} · GitHub 저장본</p></div><MarkdownDocument content={selectedArchive.content} /></article> : archiveLoading ? <div className="report-loading">저장된 보고서를 불러오고 있습니다…</div> : reportLoading && !trendReport ? <div className="report-loading">자동수집 자료를 읽고 보고서를 작성하고 있습니다…</div> : trendReport && <article className="trend-report">
             <div className="report-cover"><span className="eyebrow">MOA ISSUE INTELLIGENCE</span><h2>AI·NPU {trendReport.periodLabel}<br/>이슈 중심 종합 보고서</h2><p>{new Date(trendReport.generatedAt).toLocaleString("ko-KR")} 기준 · 원자료 {trendReport.total}건 → 중복 제거 {trendReport.uniqueTotal}건 → 통합 이슈 {trendReport.issueCount}개</p></div>

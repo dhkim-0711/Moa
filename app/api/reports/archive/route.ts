@@ -9,6 +9,10 @@ type GitHubContent = {
 };
 
 type ReportPeriod = "day" | "week" | "month";
+type SearchableReport = { period: ReportPeriod; filename: string; content: string };
+
+let searchCache: { loadedAt: number; reports: SearchableReport[] } | null = null;
+const SEARCH_CACHE_MS = 15 * 60 * 1000;
 
 function validPeriod(value: string | null): value is ReportPeriod {
   return value === "day" || value === "week" || value === "month";
@@ -35,7 +39,66 @@ function sanitizeReportContent(content: string) {
     .trimEnd();
 }
 
+async function searchableReports() {
+  if (searchCache && Date.now() - searchCache.loadedAt < SEARCH_CACHE_MS) return searchCache.reports;
+  const periods: ReportPeriod[] = ["day", "week", "month"];
+  const listed = await Promise.all(periods.map(async (period) => {
+    const directory = reportDirectory(period);
+    const response = await fetch(`https://api.github.com/repos/${REPOSITORY}/contents/${directory}?ref=${BRANCH}`, {
+      headers: { accept: "application/vnd.github+json", "user-agent": "moa-report-search" },
+      cache: "no-store",
+    });
+    if (response.status === 404) return [];
+    if (!response.ok) throw new Error(`GitHub list ${response.status}`);
+    const rows = await response.json() as GitHubContent[];
+    return rows.filter((row) => row.type === "file" && row.name.toLowerCase().endsWith(".md") && !row.name.toLowerCase().startsWith("readme"))
+      .map((row) => ({ period, filename: row.name }));
+  }));
+  const files = listed.flat().sort((a, b) => b.filename.localeCompare(a.filename, "ko")).slice(0, 250);
+  const reports: SearchableReport[] = [];
+  for (let index = 0; index < files.length; index += 12) {
+    const batch = await Promise.all(files.slice(index, index + 12).map(async (file) => {
+      const url = `https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}/${reportDirectory(file.period)}/${encodeURIComponent(file.filename)}`;
+      const response = await fetch(url, { headers: { "user-agent": "moa-report-search" }, cache: "no-store" });
+      if (!response.ok) return null;
+      return { ...file, content: sanitizeReportContent(await response.text()) };
+    }));
+    reports.push(...batch.filter((report): report is SearchableReport => Boolean(report)));
+  }
+  searchCache = { loadedAt: Date.now(), reports };
+  return reports;
+}
+
+function matchingExcerpt(content: string, query: string) {
+  const plain = content.replace(/[#>*|`_[\]()]/g, " ").replace(/https?:\/\/\S+/g, " ").replace(/\s+/g, " ").trim();
+  const index = plain.toLocaleLowerCase("ko").indexOf(query.toLocaleLowerCase("ko"));
+  const start = Math.max(0, index - 75);
+  const end = Math.min(plain.length, index + query.length + 135);
+  return `${start > 0 ? "…" : ""}${plain.slice(start, end)}${end < plain.length ? "…" : ""}`;
+}
+
 export async function GET(request: NextRequest) {
+  const query = request.nextUrl.searchParams.get("q")?.trim() || "";
+  if (query) {
+    if (query.length < 2) return NextResponse.json({ error: "검색어는 두 글자 이상 입력해주세요." }, { status: 400 });
+    try {
+      const reports = await searchableReports();
+      const normalized = query.toLocaleLowerCase("ko");
+      const results = reports.filter((report) => `${report.filename}\n${report.content}`.toLocaleLowerCase("ko").includes(normalized)).slice(0, 30).map((report) => ({
+        id: `${report.period}:${report.filename}`,
+        period: report.period,
+        periodLabel: periodLabel(report.period),
+        title: report.content.match(/^#\s+(.+)$/m)?.[1]?.trim() || titleFromFilename(report.filename, report.period),
+        publishedAt: report.filename.match(/\d{4}-\d{2}(?:-\d{2})?/)?.[0] || "",
+        filename: report.filename,
+        content: "",
+        excerpt: matchingExcerpt(report.content, query),
+      }));
+      return NextResponse.json({ results, searched: reports.length });
+    } catch {
+      return NextResponse.json({ error: "GitHub 보고서 검색에 실패했습니다." }, { status: 502 });
+    }
+  }
   const periodParam = request.nextUrl.searchParams.get("period");
   if (!validPeriod(periodParam)) {
     return NextResponse.json({ error: "period는 day, week 또는 month여야 합니다." }, { status: 400 });
