@@ -34,7 +34,7 @@
 - 원문: [매일경제 — 기가와트급 AI 데이터센터와 전력규제 쟁점](https://www.mk.co.kr/en/business/12168068)
 - 100MW·50MW 면제수준은 부처 검토 입장에 관한 보도이며 최종 법령·고시로 확정된 수치가 아님
 
-## 2. [일본·글로벌 AIDC 금융] SoftBank, DigitalBridge를 제3자 자본조달 플랫폼으로 전환…4조원대 인수 후 전략 구체화
+## 2. [일본·글로벌 AIDC 금융] SoftBank, DigitalBridge를 제3자 자본조달 플랫폼으로 전환…40억달러 인수 후 전략 구체화
 
 ![데이터센터 인프라와 외부 자본조달](https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1600&q=80)
 
