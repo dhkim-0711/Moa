@@ -58,7 +58,7 @@
 
 - 원문 최초 발행: 2026.11.06 15:45 UTC·2026.11.07 00:45 KST.
 - 원문: [Reuters — TSMC considers making advanced memory chips](https://www.reuters.com/world/asia-pacific/tsmc-considers-making-advanced-memory-chips-information-reports-2026-11-06/)
-- 최초 취재 보도: [The Information — TSMC Explores Making Advanced Memory Chips](https://www.theinformation.com/articles/tsmc-explores-making-advanced-memory-chips)
+- 최초 취재 보도: [The Information — TSMC Weighs Making Advanced Memory Chips to Capture More AI Spending](https://www.theinformation.com/articles/tsmc-weighs-making-advanced-memory-chips-capture-ai-spending)
 
 ## 3. [기술·인프라·해외] 알파벳, 퀄컴 지분 5억4,790만달러 공개…AI 데이터센터 칩 다변화에 전략적 신호
 
