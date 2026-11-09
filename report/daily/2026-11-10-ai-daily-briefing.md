@@ -56,7 +56,7 @@
 ### 발행일 및 출처
 
 1. 3사 공식 발표: 2026년 11월 9일(시각 미표기); 시각 확인 가능한 최초 보도: 2026년 11월 9일 14:00(KST), 연합뉴스.
-2. 출처: [SK텔레콤 뉴스룸](https://news.sktelecom.com/232944), [NVIDIA 공식 발표](https://nvidianews.nvidia.com/news/nvidia-rebellions-and-sk-telecom-announce-collaboration-to-advance-sovereign-ai-infrastructure-with-nvidia-nvlink-fusion), [연합뉴스](https://www.yna.co.kr/view/AKR20261109080400017).
+2. 출처: [SK텔레콤 뉴스룸](https://news.sktelecom.com/232944), [NVIDIA 공식 발표](https://nvidianews.nvidia.com/news/nvidia-rebellions-and-sk-telecom-announce-collaboration-to-advance-sovereign-ai-infrastructure-with-nvidia-nvlink-fusion), [연합뉴스](https://en.yna.co.kr/view/AEN20261109005400320).
 
 ## 3. [기술·인프라/국내] LG AI연구원, K-EXAONE 2.5 API 무료 공개
 
