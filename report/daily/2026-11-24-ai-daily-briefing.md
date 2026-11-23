@@ -29,7 +29,7 @@
 
 - 최초 발행: 2026-11-23(미국 동부시간, 원문에 세부 시각 미표기).
 - 원문: [MIT News — AI-driven technique could help engineers design analog chips faster and with less expense](https://news.mit.edu/2026/ai-driven-technique-could-help-engineers-design-analog-chips-faster-and-less-expensive-1123)
-- 연구 논문: [SLIC: Reinforcement Fine-Tuning Small LMs for Multi-Turn Analog Circuit Optimization](https://arxiv.org/abs/2611.16658)
+- 연구 논문: [SLIC: Reinforcement Fine-Tuning Small LMs for Multi-Turn Analog Circuit Optimization](https://arxiv.org/abs/2611.13452)
 
 ## 2. 인도 L&T, 1만 GPU 클러스터 일부로 NVIDIA B300 추가 구축
 
